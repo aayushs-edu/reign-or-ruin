@@ -14,8 +14,9 @@ GameObject:
   - component: {fileID: 6726762544470533484}
   - component: {fileID: 8143308435585013849}
   - component: {fileID: 8156147005333253871}
+  - component: {fileID: 844454752447434083}
   m_Layer: 7
-  m_Name: Enemy
+  m_Name: Ghost
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -124,7 +125,7 @@ BoxCollider2D:
   m_SpriteTilingProperty:
     border: {x: 0, y: 0, z: 0, w: 0}
     pivot: {x: 0.5, y: 0.5}
-    oldSize: {x: 0.32, y: 0.32}
+    oldSize: {x: 2, y: 2}
     newSize: {x: 1, y: 1}
     adaptiveTilingThreshold: 0.5
     drawMode: 0
@@ -192,3 +193,16 @@ MonoBehaviour:
   currentHealth: 0
   flashDuration: 0.1
   damageColor: {r: 1, g: 0, b: 0, a: 1}
+--- !u!114 &844454752447434083
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1180427520959586231}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 20235a3d1ae352345a5f4a4e68c38b71, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  typeName: Ghost

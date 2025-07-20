@@ -7,6 +7,7 @@ public class VillagerStatsUI : MonoBehaviour
     [Header("UI References")]
     [SerializeField] private Canvas canvas;
     [SerializeField] private GameObject uiPanel;
+    [SerializeField] private GameObject healthOnlyPanel; // Always visible health display
     
     [Header("Power UI")]
     [SerializeField] private Slider powerBar;
@@ -46,6 +47,11 @@ public class VillagerStatsUI : MonoBehaviour
     [SerializeField] private Color fullHealthColor = Color.green;
     [SerializeField] private Color lowHealthColor = Color.red;
     
+    [Header("Power Allocation")]
+    [SerializeField] private Button addPowerButton;
+    [SerializeField] private Button removePowerButton;
+    [SerializeField] private int powerPerClick = 1;
+    
     [Header("Display Settings")]
     [SerializeField] private bool alwaysShow = false;
     [SerializeField] private float showDistance = 5f;
@@ -56,7 +62,8 @@ public class VillagerStatsUI : MonoBehaviour
     private Camera playerCamera;
     private Transform villagerTransform;
     private Villager villager;
-    private bool isVisible = true;
+    private bool isPanelVisible = false;
+    private Collider2D villagerCollider;
     
     private void Start()
     {
@@ -100,6 +107,35 @@ public class VillagerStatsUI : MonoBehaviour
         {
             Debug.LogWarning("VillagerStatsUI: No Villager component found in parent!");
         }
+        
+        // Get villager collider for mouse detection
+        if (villagerTransform != null)
+        {
+            villagerCollider = villagerTransform.GetComponent<Collider2D>();
+            if (villagerCollider == null)
+            {
+                Debug.LogWarning("VillagerStatsUI: No Collider2D found on villager for mouse detection!");
+            }
+        }
+        
+        // Setup power allocation buttons
+        SetupPowerButtons();
+        
+        // Initialize panel visibility
+        SetPanelVisible(alwaysShow);
+    }
+    
+    private void SetupPowerButtons()
+    {
+        if (addPowerButton != null)
+        {
+            addPowerButton.onClick.AddListener(() => ModifyVillagerPower(powerPerClick));
+        }
+        
+        if (removePowerButton != null)
+        {
+            removePowerButton.onClick.AddListener(() => ModifyVillagerPower(-powerPerClick));
+        }
     }
     
     private void Update()
@@ -122,17 +158,22 @@ public class VillagerStatsUI : MonoBehaviour
     {
         if (alwaysShow)
         {
-            SetUIVisible(true);
+            SetPanelVisible(true);
             return;
         }
         
         bool shouldShow = false;
         
-        // Show if player is nearby
-        if (playerCamera != null && villagerTransform != null)
+        // Check if mouse is over villager using raycast
+        if (IsMouseOverVillager())
         {
-            float distance = Vector3.Distance(playerCamera.transform.position, villagerTransform.position);
-            shouldShow = distance <= showDistance;
+            shouldShow = true;
+        }
+        
+        // Check if mouse is over UI panel
+        if (isPanelVisible && IsMouseOverUIPanel())
+        {
+            shouldShow = true;
         }
         
         // Always show if villager is angry or rebel
@@ -145,18 +186,59 @@ public class VillagerStatsUI : MonoBehaviour
             }
         }
         
-        SetUIVisible(shouldShow);
+        SetPanelVisible(shouldShow);
     }
     
-    private void SetUIVisible(bool visible)
+    private bool IsMouseOverVillager()
     {
-        if (isVisible != visible)
+        if (playerCamera == null || villagerCollider == null) return false;
+        
+        Vector3 mouseWorldPos = playerCamera.ScreenToWorldPoint(Input.mousePosition);
+        mouseWorldPos.z = 0f; // Ensure we're on the 2D plane
+        
+        return villagerCollider.OverlapPoint(mouseWorldPos);
+    }
+    
+    private bool IsMouseOverUIPanel()
+    {
+        if (uiPanel == null || !uiPanel.activeInHierarchy) return false;
+        
+        // Check if mouse is over any UI element in the panel
+        var eventSystem = UnityEngine.EventSystems.EventSystem.current;
+        if (eventSystem == null) return false;
+        
+        var pointerEventData = new UnityEngine.EventSystems.PointerEventData(eventSystem);
+        pointerEventData.position = Input.mousePosition;
+        
+        var results = new System.Collections.Generic.List<UnityEngine.EventSystems.RaycastResult>();
+        UnityEngine.EventSystems.EventSystem.current.RaycastAll(pointerEventData, results);
+        
+        foreach (var result in results)
         {
-            isVisible = visible;
+            if (result.gameObject.transform.IsChildOf(uiPanel.transform) || result.gameObject == uiPanel)
+            {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+    
+    private void SetPanelVisible(bool visible)
+    {
+        if (isPanelVisible != visible)
+        {
+            isPanelVisible = visible;
             if (uiPanel != null)
             {
                 uiPanel.SetActive(visible);
             }
+        }
+        
+        // Health panel is always visible
+        if (healthOnlyPanel != null)
+        {
+            healthOnlyPanel.SetActive(true);
         }
     }
     
@@ -197,6 +279,82 @@ public class VillagerStatsUI : MonoBehaviour
             else
                 powerFill.color = noPowerColor;
         }
+        
+        // Update button states
+        UpdatePowerButtons(stats);
+    }
+    
+    private void UpdatePowerButtons(VillagerStats stats)
+    {
+        if (addPowerButton != null)
+        {
+            // Enable if villager isn't at max tier and player has power available
+            bool canAddPower = stats.tier < 2 && CanPlayerAllocatePower(powerPerClick);
+            addPowerButton.interactable = canAddPower;
+        }
+        
+        if (removePowerButton != null)
+        {
+            // Enable if villager has power to remove
+            bool canRemovePower = stats.power > 0;
+            removePowerButton.interactable = canRemovePower;
+        }
+    }
+    
+    private bool CanPlayerAllocatePower(int amount)
+    {
+        // Check if player has enough power to allocate
+        // This would connect to your power system
+        if (PowerSystem.Instance != null)
+        {
+            return PowerSystem.Instance.GetTotalCommunalPower() >= amount;
+        }
+        return true; // Default to true for testing
+    }
+    
+    private void ModifyVillagerPower(int amount)
+    {
+        if (villager == null) return;
+        
+        VillagerStats stats = villager.GetStats();
+        int newPowerAmount = Mathf.Max(0, stats.power + amount);
+        
+        // Cap at max tier power (4)
+        newPowerAmount = Mathf.Min(4, newPowerAmount);
+        
+        if (newPowerAmount != stats.power)
+        {
+            // Handle power allocation through proper systems
+            if (amount > 0)
+            {
+                // Adding power - check if player has enough
+                if (CanPlayerAllocatePower(amount))
+                {
+                    AllocatePowerToVillager(newPowerAmount);
+                }
+            }
+            else
+            {
+                // Removing power - always allowed
+                AllocatePowerToVillager(newPowerAmount);
+            }
+        }
+    }
+    
+    private void AllocatePowerToVillager(int totalPower)
+    {
+        if (villager == null) return;
+        
+        // This should integrate with your power allocation system
+        villager.AllocatePower(totalPower);
+        
+        // Optionally notify power system of the change
+        if (PowerSystem.Instance != null)
+        {
+            // PowerSystem.Instance.OnVillagerPowerChanged(villager, totalPower);
+        }
+        
+        Debug.Log($"Allocated {totalPower} power to {villager.GetRole()} villager");
     }
     
     private int GetTierRequirement(int tier)
@@ -322,7 +480,37 @@ public class VillagerStatsUI : MonoBehaviour
     
     public void ForceShow(bool show)
     {
-        SetUIVisible(show);
+        SetPanelVisible(show);
+    }
+    
+    public void SetPowerPerClick(int amount)
+    {
+        powerPerClick = amount;
+    }
+    
+    // Manual power allocation methods
+    public void AddPowerToVillager()
+    {
+        ModifyVillagerPower(powerPerClick);
+    }
+    
+    public void RemovePowerFromVillager()
+    {
+        ModifyVillagerPower(-powerPerClick);
+    }
+    
+    private void OnDestroy()
+    {
+        // Clean up button listeners
+        if (addPowerButton != null)
+        {
+            addPowerButton.onClick.RemoveAllListeners();
+        }
+        
+        if (removePowerButton != null)
+        {
+            removePowerButton.onClick.RemoveAllListeners();
+        }
     }
     
     // Debug method

@@ -80,9 +80,18 @@ public class Villager : MonoBehaviour
         if (statsUI == null)
             statsUI = GetComponentInChildren<VillagerStatsUI>();
         
-        // Store original color for flashing
+        // Store original color for flashing - ENSURE it's not black
         if (spriteRenderer != null)
+        {
             originalColor = spriteRenderer.color;
+            // Safety check - if color is black or transparent, set to white
+            if (originalColor.r == 0f && originalColor.g == 0f && originalColor.b == 0f)
+            {
+                originalColor = Color.white;
+                spriteRenderer.color = originalColor;
+                Debug.LogWarning($"Villager {gameObject.name} had black color, reset to white");
+            }
+        }
         
         // Set initial HP based on role
         SetInitialStats();
@@ -316,11 +325,12 @@ public class Villager : MonoBehaviour
         // Update sprite based on state
         UpdateStateSprite();
         
-        // Update sprite transparency based on active state
+        // Update sprite transparency based on active state (but preserve color)
         if (spriteRenderer != null && !isFlashing)
         {
             Color color = originalColor;
-            color.a = stats.isActive ? 1f : 0.5f; // Fade inactive villagers
+            // Only modify alpha, preserve RGB values
+            color.a = stats.isActive ? originalColor.a : originalColor.a * 0.5f;
             spriteRenderer.color = color;
         }
     }
