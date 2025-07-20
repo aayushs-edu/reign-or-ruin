@@ -78,12 +78,17 @@ public class ThrowableWeaponSystem : MonoBehaviour
     [SerializeField] private float groundCheckDistance = 0.5f;
     [SerializeField] private float fallGravity = 1f;
     [SerializeField] private float fallDrag = 2f;
+    
+    [Header("Pickup Settings")]
+    [SerializeField] private float pickupRange = 2f;
+    [SerializeField] private float pickupChargeRestore = 20f;
 
     [Header("Audio")]
     [SerializeField] private AudioClip throwSound;
     [SerializeField] private AudioClip returnSound;
     [SerializeField] private AudioClip hitSound;
     [SerializeField] private AudioClip swingSound;
+    [SerializeField] private AudioClip pickupSound;
     
     // State variables
     private WeaponState currentState = WeaponState.Held;
@@ -114,6 +119,7 @@ public class ThrowableWeaponSystem : MonoBehaviour
     private PlayerMovement playerMovement;
     private Camera mainCamera;
     private AudioSource audioSource;
+    private Transform originalParent;
     
     // Events
     public System.Action<float> OnChargeChanged;
@@ -127,6 +133,9 @@ public class ThrowableWeaponSystem : MonoBehaviour
         currentCharge = maxCharge;
         originalPosition = weaponTransform.localPosition;
         targetCameraSize = normalFOV;
+        
+        // Store original parent (should be the player)
+        originalParent = transform.parent;
     }
     
     private void InitializeComponents()
@@ -154,7 +163,7 @@ public class ThrowableWeaponSystem : MonoBehaviour
         if (weaponCollider != null)
         {
             weaponCollider.isTrigger = true;
-            weaponCollider.enabled = false; // Only enable when thrown
+            weaponCollider.enabled = false; // Only enable when thrown or dropped
         }
     }
     
@@ -179,8 +188,8 @@ public class ThrowableWeaponSystem : MonoBehaviour
     {
         if (currentState == WeaponState.Dropped)
         {
-            float distance = Vector3.Distance(transform.position, transform.parent.position);
-            if (distance <= 2f && Input.GetKeyDown(KeyCode.F))
+            float distance = Vector3.Distance(transform.position, originalParent.position);
+            if (distance <= pickupRange && Input.GetKeyDown(KeyCode.E))
             {
                 PickupWeapon();
             }
@@ -364,7 +373,7 @@ public class ThrowableWeaponSystem : MonoBehaviour
                 DropWeapon();
             }
         }
-        else
+        else if (currentState != WeaponState.Dropped)
         {
             float regenRate = baseChargeRegenRate + (playerPower.currentPower * powerChargeMultiplier);
             currentCharge = Mathf.Min(maxCharge, currentCharge + regenRate * Time.deltaTime);
@@ -447,7 +456,7 @@ public class ThrowableWeaponSystem : MonoBehaviour
         weaponTransform.position += velocity * Time.deltaTime;
         weaponTransform.Rotate(0, 0, 720f * Time.deltaTime);
         
-        float distanceFromPlayer = Vector3.Distance(weaponTransform.position, transform.parent.position);
+        float distanceFromPlayer = Vector3.Distance(weaponTransform.position, originalParent.position);
         if (distanceFromPlayer > 20f)
         {
             StartReturn();
@@ -456,7 +465,7 @@ public class ThrowableWeaponSystem : MonoBehaviour
     
     private void UpdateReturningBehavior()
     {
-        Vector3 playerPos = transform.parent.position;
+        Vector3 playerPos = originalParent.position;
         Vector3 direction = (playerPos - weaponTransform.position).normalized;
         float returnSpeed = currentSpeed * returnSpeedMultiplier;
         
@@ -603,6 +612,9 @@ public class ThrowableWeaponSystem : MonoBehaviour
     
     private void ReturnToPlayer()
     {
+        // Re-parent the weapon to the player
+        transform.SetParent(originalParent);
+        
         ChangeState(WeaponState.Held);
         weaponTransform.localPosition = originalPosition;
         weaponTransform.localRotation = Quaternion.identity;
@@ -619,6 +631,9 @@ public class ThrowableWeaponSystem : MonoBehaviour
     
     private void DropWeapon()
     {
+        // Unparent the weapon from the player
+        transform.SetParent(null);
+        
         ChangeState(WeaponState.Dropped);
         velocity = Vector3.zero;
         thrownIntensity = 1f;
@@ -655,16 +670,24 @@ public class ThrowableWeaponSystem : MonoBehaviour
     
     private void PickupWeapon()
     {
+        // Remove any physics components
         Rigidbody2D rb = weaponTransform.GetComponent<Rigidbody2D>();
         if (rb != null)
         {
             Destroy(rb);
         }
         
-        currentCharge = Mathf.Min(maxCharge, currentCharge + 20f);
+        // Re-parent the weapon to the player
+        transform.SetParent(originalParent);
+        
+        // Restore some charge
+        currentCharge = Mathf.Min(maxCharge, currentCharge + pickupChargeRestore);
         isOnGround = false; // Reset ground status
+        
+        // Return to held state
         ReturnToPlayer();
         
+        PlaySound(pickupSound);
         Debug.Log("Weapon picked up!");
     }
     
@@ -793,6 +816,8 @@ public class ThrowableWeaponSystem : MonoBehaviour
     public WeaponState GetCurrentState() => currentState;
     public bool CanThrow() => currentCharge >= minChargeToThrow && (currentState == WeaponState.Held || currentState == WeaponState.Aiming);
     public int GetCurrentDamage() => Mathf.RoundToInt(baseDamage + (baseDamage * damageMultiplierPerCharge * currentCharge));
+    public bool IsDropped() => currentState == WeaponState.Dropped;
+    public float GetPickupRange() => pickupRange;
     
     // Public setters
     public void SetParticleLifetimeRange(float minLifetime, float maxLifetime)
@@ -818,7 +843,7 @@ public class ThrowableWeaponSystem : MonoBehaviour
         if (currentState == WeaponState.Dropped)
         {
             Gizmos.color = Color.yellow;
-            Gizmos.DrawWireSphere(weaponTransform.position, 2f);
+            Gizmos.DrawWireSphere(weaponTransform.position, pickupRange);
         }
         
         if (currentState == WeaponState.Swinging)
@@ -834,7 +859,11 @@ public class ThrowableWeaponSystem : MonoBehaviour
             Gizmos.DrawRay(weaponTransform.position, Vector2.down * groundCheckDistance);
         }
         
-        Gizmos.color = Color.blue;
-        Gizmos.DrawWireSphere(weaponTransform.position, accuracyRadius);
+        // Draw pickup range when held (for reference)
+        if (currentState == WeaponState.Held)
+        {
+            Gizmos.color = Color.cyan;
+            Gizmos.DrawWireSphere(weaponTransform.position, pickupRange);
+        }
     }
 }

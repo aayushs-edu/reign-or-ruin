@@ -13,6 +13,7 @@ public class EnemyHealth : MonoBehaviour
     private SpriteRenderer spriteRenderer;
     private Color originalColor;
     private bool isFlashing = false;
+    private bool isDead = false;
     
     // Events
     public System.Action OnDeath;
@@ -31,7 +32,7 @@ public class EnemyHealth : MonoBehaviour
     
     public void TakeDamage(int damage)
     {
-        if (currentHealth <= 0) return; // Already dead
+        if (isDead) return; // Already dead, ignore further damage
         
         currentHealth -= damage;
         currentHealth = Mathf.Max(0, currentHealth);
@@ -52,6 +53,9 @@ public class EnemyHealth : MonoBehaviour
     
     private void Die()
     {
+        if (isDead) return; // Prevent multiple death calls
+        
+        isDead = true;
         OnDeath?.Invoke();
         
         // Add death effect here if desired
@@ -73,15 +77,28 @@ public class EnemyHealth : MonoBehaviour
     public int GetCurrentHealth() => currentHealth;
     public int GetMaxHealth() => maxHealth;
     public float GetHealthPercentage() => (float)currentHealth / maxHealth;
+    public bool IsDead() => isDead;
     
     // For collision detection with player attacks
     private void OnTriggerEnter2D(Collider2D other)
     {
+        if (isDead) return; // Don't process collisions if already dead
+        
         // Debug what's triggering
         Debug.Log($"Enemy {gameObject.name} triggered by: {other.gameObject.name} with tag: {other.tag}");
         
         if (other.CompareTag("Weapon"))
         {
+            // Check if it's a throwable weapon
+            ThrowableWeaponSystem throwableWeapon = other.GetComponent<ThrowableWeaponSystem>();
+            if (throwableWeapon != null)
+            {
+                // Throwable weapon handles its own damage in HandleWeaponCollision
+                // Don't apply damage here to avoid double damage
+                return;
+            }
+            
+            // Handle regular weapon system or basic weapon damage
             TakeDamage(1); // Basic damage, you can modify this
         }
         
