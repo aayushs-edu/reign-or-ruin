@@ -6,6 +6,7 @@ TagManager:
   tags:
   - Villager
   - Weapon
+  - Building
   layers:
   - Default
   - TransparentFX
@@ -17,7 +18,7 @@ TagManager:
   - Enemy
   - Obstacle
   - Weapon
-  - 
+  - Villager
   - 
   - 
   - 

@@ -40,13 +40,6 @@ public class VillagerStatsUI : MonoBehaviour
     [SerializeField] private Color angryStateColor = new Color(1f, 0.65f, 0f);
     [SerializeField] private Color rebelStateColor = Color.red;
     
-    [Header("Health UI")]
-    [SerializeField] private Slider healthBar;
-    [SerializeField] private TextMeshProUGUI healthText;
-    [SerializeField] private Image healthFill;
-    [SerializeField] private Color fullHealthColor = Color.green;
-    [SerializeField] private Color lowHealthColor = Color.red;
-    
     [Header("Power Allocation")]
     [SerializeField] private Button addPowerButton;
     [SerializeField] private Button removePowerButton;
@@ -94,7 +87,6 @@ public class VillagerStatsUI : MonoBehaviour
         if (powerBar != null) powerBar.maxValue = 2f; // Start with tier 0 requirement
         if (foodBar != null) foodBar.maxValue = 1f;
         if (discontentBar != null) discontentBar.maxValue = 100f;
-        if (healthBar != null) healthBar.maxValue = 100f; // Will update dynamically
     }
     
     private void SetupReferences()
@@ -247,7 +239,6 @@ public class VillagerStatsUI : MonoBehaviour
         UpdatePowerUI(stats);
         UpdateFoodUI(stats);
         UpdateDiscontentUI(stats);
-        UpdateHealthUI(stats);
         UpdateRoleUI(stats);
     }
     
@@ -418,25 +409,6 @@ public class VillagerStatsUI : MonoBehaviour
         }
     }
     
-    private void UpdateHealthUI(VillagerStats stats)
-    {
-        if (healthBar != null)
-        {
-            healthBar.maxValue = stats.maxHP;
-            healthBar.value = stats.currentHP;
-        }
-        
-        if (healthText != null)
-        {
-            healthText.text = $"HP: {stats.currentHP}/{stats.maxHP}";
-        }
-        
-        if (healthFill != null)
-        {
-            float healthPercent = stats.maxHP > 0 ? (float)stats.currentHP / stats.maxHP : 0f;
-            healthFill.color = Color.Lerp(lowHealthColor, fullHealthColor, healthPercent);
-        }
-    }
     
     private void UpdateRoleUI(VillagerStats stats)
     {

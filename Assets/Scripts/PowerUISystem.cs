@@ -16,11 +16,7 @@ public class PowerUISystem : MonoBehaviour
     [SerializeField] private Image playerPowerFill;
     [SerializeField] private Color normalPowerColor = Color.blue;
     [SerializeField] private Color chargedPowerColor = Color.cyan;
-    
-    [Header("Villager Power UI")]
-    [SerializeField] private Transform villagerPowerContainer;
-    [SerializeField] private GameObject villagerPowerPrefab; // Prefab for individual villager power bars
-    
+
     [Header("Rebellion Warning UI")]
     [SerializeField] private GameObject rebellionWarning;
     [SerializeField] private Slider rebellionRiskBar;
@@ -51,7 +47,6 @@ public class PowerUISystem : MonoBehaviour
     {
         InitializeReferences();
         SetupEventListeners();
-        CreateVillagerUIs();
         SetupControlsText();
         
         // Initial UI update
@@ -78,40 +73,6 @@ public class PowerUISystem : MonoBehaviour
         }
     }
     
-    private void CreateVillagerUIs()
-    {
-        if (powerSystem == null || villagerPowerContainer == null || villagerPowerPrefab == null) return;
-        
-        List<PowerHolder> villagers = powerSystem.GetVillagerPowers();
-        
-        for (int i = 0; i < villagers.Count; i++)
-        {
-            GameObject villagerUI = Instantiate(villagerPowerPrefab, villagerPowerContainer);
-            
-            VillagerPowerUI ui = new VillagerPowerUI();
-            ui.uiObject = villagerUI;
-            ui.villagerIndex = i;
-            
-            // Get UI components from prefab
-            ui.powerBar = villagerUI.GetComponentInChildren<Slider>();
-            ui.nameText = villagerUI.transform.Find("NameText")?.GetComponent<TextMeshProUGUI>();
-            ui.powerText = villagerUI.transform.Find("PowerText")?.GetComponent<TextMeshProUGUI>();
-            
-            // Setup initial values
-            if (ui.nameText != null)
-            {
-                ui.nameText.text = villagers[i].holderName;
-            }
-            
-            if (ui.powerBar != null)
-            {
-                ui.powerBar.maxValue = villagers[i].maxPower;
-                ui.powerBar.value = villagers[i].currentPower;
-            }
-            
-            villagerUIs.Add(ui);
-        }
-    }
     
     private void SetupControlsText()
     {

@@ -56,7 +56,7 @@ public class Building : MonoBehaviour
     {
         if (healthBar != null)
         {
-            healthBar.UpdateHealth(currentHealth, maxHealth);
+            healthBar.SetHealth(currentHealth);
         }
     }
     
