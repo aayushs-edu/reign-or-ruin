@@ -604,32 +604,54 @@ public class ThrowableWeaponSystem : MonoBehaviour
     
     private void CheckSwingDamage()
     {
-        Collider2D[] enemies = Physics2D.OverlapCircleAll(weaponTransform.position, swingRange, collisionLayers);
+        Collider2D[] colliders = Physics2D.OverlapCircleAll(weaponTransform.position, swingRange, collisionLayers);
         
-        foreach (Collider2D enemy in enemies)
+        foreach (Collider2D collider in colliders)
         {
-            EnemyHealth enemyHealth = enemy.GetComponent<EnemyHealth>();
-            if (enemyHealth != null)
+            Vector3 directionToTarget = (collider.transform.position - weaponTransform.position).normalized;
+            float angleToTarget = Mathf.Atan2(directionToTarget.y, directionToTarget.x) * Mathf.Rad2Deg;
+            
+            float normalizedSwingStart = swingStartAngle;
+            float normalizedSwingEnd = swingStartAngle + swingAngle;
+            float normalizedTargetAngle = angleToTarget;
+            
+            while (normalizedTargetAngle < normalizedSwingStart) normalizedTargetAngle += 360f;
+            while (normalizedTargetAngle > normalizedSwingStart + 360f) normalizedTargetAngle -= 360f;
+            
+            if (normalizedTargetAngle >= normalizedSwingStart && normalizedTargetAngle <= normalizedSwingEnd)
             {
-                Vector3 directionToEnemy = (enemy.transform.position - weaponTransform.position).normalized;
-                float angleToEnemy = Mathf.Atan2(directionToEnemy.y, directionToEnemy.x) * Mathf.Rad2Deg;
+                int damage = Mathf.RoundToInt(swingDamage);
+                bool hitSomething = false;
                 
-                float normalizedSwingStart = swingStartAngle;
-                float normalizedSwingEnd = swingStartAngle + swingAngle;
-                float normalizedEnemyAngle = angleToEnemy;
-                
-                while (normalizedEnemyAngle < normalizedSwingStart) normalizedEnemyAngle += 360f;
-                while (normalizedEnemyAngle > normalizedSwingStart + 360f) normalizedEnemyAngle -= 360f;
-                
-                if (normalizedEnemyAngle >= normalizedSwingStart && normalizedEnemyAngle <= normalizedSwingEnd)
+                // Check for enemy
+                EnemyHealth enemyHealth = collider.GetComponent<EnemyHealth>();
+                if (enemyHealth != null)
                 {
-                    int damage = Mathf.RoundToInt(swingDamage);
                     enemyHealth.TakeDamage(damage);
                     OnDamageDealt?.Invoke(damage);
                     PlaySound(hitSound);
+                    hitSomething = true;
+                    Debug.Log($"Swing hit enemy {collider.name} for {damage} damage!");
+                }
+                
+                // Check for villager health component (alternative)
+                if (!hitSomething)
+                {
+                    VillagerHealth villagerHealth = collider.GetComponent<VillagerHealth>();
+                    if (villagerHealth != null)
+                    {
+                        villagerHealth.TakeDamage(damage);
+                        villagerHealth.GetComponent<Villager>().AddDiscontent(5f); // Add discontent for friendly fire
+                        OnDamageDealt?.Invoke(damage);
+                        PlaySound(hitSound);
+                        hitSomething = true;
+                        Debug.Log($"WARNING: Swing hit villager {collider.name} for {damage} damage! (Friendly Fire)");
+                    }
+                }
+                
+                if (hitSomething)
+                {
                     swingHasHit = true;
-                    
-                    Debug.Log($"Swing hit {enemy.name} for {damage} damage!");
                     break;
                 }
             }
@@ -640,7 +662,7 @@ public class ThrowableWeaponSystem : MonoBehaviour
     {
         if (currentState == WeaponState.Thrown)
         {
-            // When thrown, only return on collision with collision layers
+            // When thrown, check collision with all collision layers
             if (IsInLayerMask(other.gameObject.layer, collisionLayers))
             {
                 HandleWeaponCollision(other);
@@ -655,7 +677,7 @@ public class ThrowableWeaponSystem : MonoBehaviour
             }
         }
     }
-    
+
     private bool IsInLayerMask(int layer, LayerMask layerMask)
     {
         return (layerMask.value & (1 << layer)) != 0;
@@ -683,14 +705,18 @@ public class ThrowableWeaponSystem : MonoBehaviour
         float chargeMultiplier = currentCharge / maxCharge;
         int damage = Mathf.RoundToInt(baseDamage * (1f + chargeMultiplier) * thrownIntensity);
         
+        bool hitSomething = false;
+        
+        // Check for enemy
         EnemyHealth enemyHealth = hitCollider.GetComponent<EnemyHealth>();
         if (enemyHealth != null)
         {
             enemyHealth.TakeDamage(damage);
             OnDamageDealt?.Invoke(damage);
             PlaySound(hitSound);
+            hitSomething = true;
             
-            Debug.Log($"Weapon hit {hitCollider.name} for {damage} damage! Penetration remaining: {remainingPenetration}");
+            Debug.Log($"Weapon hit enemy {hitCollider.name} for {damage} damage! Penetration remaining: {remainingPenetration}");
             
             if (remainingPenetration > 0)
             {
@@ -703,8 +729,28 @@ public class ThrowableWeaponSystem : MonoBehaviour
             }
         }
         
-        // Collision with anything in collision layers triggers return
-        StartReturn();
+        // Check for villager health component (alternative)
+        VillagerHealth villagerHealth = hitCollider.GetComponent<VillagerHealth>();
+        if (villagerHealth != null)
+        {
+            villagerHealth.TakeDamage(damage);
+            OnDamageDealt?.Invoke(damage);
+            PlaySound(hitSound);
+            hitSomething = true;
+            
+            Debug.Log($"WARNING: Weapon hit villager {hitCollider.name} for {damage} damage! (Friendly Fire)");
+            
+            // Weapon continues through villagers with reduced speed
+            currentSpeed *= 0.7f;
+            velocity = velocity.normalized * currentSpeed;
+            return;
+        }
+        
+        // Collision with anything else in collision layers triggers return
+        if (hitSomething || IsInLayerMask(hitCollider.gameObject.layer, collisionLayers))
+        {
+            StartReturn();
+        }
     }
     
     private void StartReturn()

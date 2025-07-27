@@ -55,6 +55,7 @@ public class VillagerStatsUI : MonoBehaviour
     private Camera playerCamera;
     private Transform villagerTransform;
     private Villager villager;
+    private VillagerHealth villagerHealth;
     private bool isPanelVisible = false;
     private Collider2D villagerCollider;
     
@@ -94,10 +95,16 @@ public class VillagerStatsUI : MonoBehaviour
         playerCamera = Camera.main;
         villagerTransform = transform.parent;
         villager = GetComponentInParent<Villager>();
+        villagerHealth = GetComponentInParent<VillagerHealth>();
         
         if (villager == null)
         {
             Debug.LogWarning("VillagerStatsUI: No Villager component found in parent!");
+        }
+        
+        if (villagerHealth == null)
+        {
+            Debug.LogWarning("VillagerStatsUI: No VillagerHealth component found in parent!");
         }
         
         // Get villager collider for mouse detection
@@ -225,6 +232,12 @@ public class VillagerStatsUI : MonoBehaviour
             {
                 uiPanel.SetActive(visible);
             }
+            
+            // Notify villager about UI visibility change
+            if (villager != null)
+            {
+                villager.SetStatsUIVisible(visible);
+            }
         }
         
         // Health panel is always visible
@@ -240,6 +253,17 @@ public class VillagerStatsUI : MonoBehaviour
         UpdateFoodUI(stats);
         UpdateDiscontentUI(stats);
         UpdateRoleUI(stats);
+        UpdateHealthUI(); // Add health display
+    }
+    
+    private void UpdateHealthUI()
+    {
+        // You can add health display to the UI panel if needed
+        // For now, health is shown in the separate health bar
+        if (villagerHealth != null)
+        {
+            // Update any health-related UI elements here
+        }
     }
     
     private void UpdatePowerUI(VillagerStats stats)
@@ -483,19 +507,20 @@ public class VillagerStatsUI : MonoBehaviour
         {
             removePowerButton.onClick.RemoveAllListeners();
         }
+        
+        // Ensure indicators are shown when UI is destroyed
+        if (villager != null)
+        {
+            villager.SetStatsUIVisible(false);
+        }
     }
     
-    // Debug method
-    public void TestStatsDisplay()
+    private void OnDisable()
     {
-        VillagerStats testStats = new VillagerStats();
-        testStats.power = 2;
-        testStats.food = 0.7f;
-        testStats.discontent = 45f;
-        testStats.currentHP = 80;
-        testStats.maxHP = 100;
-        testStats.tier = 1;
-        
-        UpdateStats(testStats);
+        // Ensure indicators are shown when UI is disabled
+        if (villager != null)
+        {
+            villager.SetStatsUIVisible(false);
+        }
     }
 }

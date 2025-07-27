@@ -1,4 +1,4 @@
-// VillagerHealth.cs
+// VillagerHealth.cs - Complete health management for villagers
 using UnityEngine;
 
 public class VillagerHealth : Health
@@ -7,25 +7,139 @@ public class VillagerHealth : Health
     [SerializeField] private int powerDropOnDeath = 5;
     [SerializeField] private bool canRebel = true;
     [SerializeField] private float rebelHealthMultiplier = 1.5f;
+    [SerializeField] private float witnessDeathRadius = 5f;
     
     private bool isRebel = false;
     private VillagerAI villagerAI;
+    private Villager villagerComponent;
+    private GameObject lastDamageSource;
     
     protected override void Awake()
     {
         base.Awake();
         villagerAI = GetComponent<VillagerAI>();
+        villagerComponent = GetComponent<Villager>();
+        
+        // Set initial health if villager component exists
+        if (villagerComponent != null)
+        {
+            SetInitialHealthByRole();
+        }
+    }
+    
+    private void SetInitialHealthByRole()
+    {
+        if (villagerComponent == null) return;
+        
+        VillagerRole role = villagerComponent.GetRole();
+        switch (role)
+        {
+            case VillagerRole.Captain:
+                maxHealth = 150;
+                break;
+            case VillagerRole.Farmer:
+                maxHealth = 80;
+                break;
+            case VillagerRole.Mage:
+                maxHealth = 70;
+                break;
+            case VillagerRole.Builder:
+                maxHealth = 120;
+                break;
+            case VillagerRole.Commoner:
+                maxHealth = 100;
+                break;
+        }
+        
+        currentHealth = maxHealth;
+        UpdateHealthBar();
+    }
+    
+    public override void TakeDamage(int damage)
+    {
+        TakeDamage(damage, null);
+    }
+    
+    public void TakeDamage(int damage, GameObject damageSource)
+    {
+        if (isDead) return;
+        
+        lastDamageSource = damageSource;
+        currentHealth -= damage;
+        currentHealth = Mathf.Clamp(currentHealth, 0, maxHealth);
+        
+        OnDamaged?.Invoke(damage);
+        OnHealthChanged?.Invoke(currentHealth);
+        
+        UpdateHealthBar();
+        
+        // Check if damage is from player
+        bool isPlayerDamage = damageSource != null && damageSource.CompareTag("Player");
+        
+        Debug.Log($"{gameObject.name} took {damage} damage from {(damageSource != null ? damageSource.name : "unknown")} (IsPlayer: {isPlayerDamage})");
+        
+        // If damaged by player and villager component exists, trigger friendly fire response
+        if (isPlayerDamage && villagerComponent != null && !isRebel)
+        {
+            villagerComponent.OnHitByPlayerFriendlyFire();
+        }
+        
+        if (currentHealth <= 0)
+        {
+            Die();
+        }
+        else
+        {
+            // Visual and audio feedback
+            OnDamageTaken();
+        }
     }
     
     protected override void Die()
     {
+        if (isDead) return;
+        
+        // Check if killed by player
+        bool killedByPlayer = lastDamageSource != null && lastDamageSource.CompareTag("Player");
+        
+        Debug.Log($"{gameObject.name} has died! Killed by player: {killedByPlayer}, Last damage source: {(lastDamageSource != null ? lastDamageSource.name : "none")}");
+        
+        // Notify nearby villagers if killed by player
+        if (killedByPlayer)
+        {
+            NotifyNearbyVillagersOfDeath();
+        }
+        
         // Drop power if killed
         if (PowerSystem.Instance != null && powerDropOnDeath > 0)
         {
             PowerSystem.Instance.AddPowerFromEnemy(powerDropOnDeath);
         }
         
+        // Notify villager component of death
+        if (villagerComponent != null)
+        {
+            villagerComponent.OnDeath();
+        }
+        
         base.Die();
+    }
+    
+    private void NotifyNearbyVillagersOfDeath()
+    {
+        // Find all villagers within witness radius
+        Collider2D[] nearbyColliders = Physics2D.OverlapCircleAll(transform.position, witnessDeathRadius);
+        
+        foreach (var collider in nearbyColliders)
+        {
+            if (collider.gameObject == gameObject) continue; // Skip self
+            
+            Villager witness = collider.GetComponent<Villager>();
+            if (witness != null && witness.IsLoyal())
+            {
+                witness.OnWitnessedVillagerDeath(villagerComponent, true);
+            }
+        }
     }
     
     public void ConvertToRebel()
@@ -52,5 +166,42 @@ public class VillagerHealth : Health
         }
     }
     
+    public void UpdateHealthForTier(int tier)
+    {
+        if (villagerComponent == null) return;
+        
+        // Get base health for role
+        int baseHP = GetBaseHealthForRole(villagerComponent.GetRole());
+        
+        // Update max HP based on tier (+20% per tier)
+        int newMaxHealth = Mathf.RoundToInt(baseHP * (1f + tier * 0.2f));
+        
+        // If health increased, heal to full
+        bool healToFull = newMaxHealth > maxHealth;
+        SetMaxHealth(newMaxHealth, healToFull);
+    }
+    
+    private int GetBaseHealthForRole(VillagerRole role)
+    {
+        switch (role)
+        {
+            case VillagerRole.Captain: return 150;
+            case VillagerRole.Farmer: return 80;
+            case VillagerRole.Mage: return 70;
+            case VillagerRole.Builder: return 120;
+            case VillagerRole.Commoner: return 100;
+            default: return 100;
+        }
+    }
+    
     public bool IsRebel() => isRebel;
+    public int GetCurrentHP() => currentHealth;
+    public int GetMaxHP() => maxHealth;
+    
+    private void OnDrawGizmosSelected()
+    {
+        // Draw witness death radius
+        Gizmos.color = Color.red;
+        Gizmos.DrawWireSphere(transform.position, witnessDeathRadius);
+    }
 }

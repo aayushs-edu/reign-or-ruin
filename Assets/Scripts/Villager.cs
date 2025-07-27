@@ -1,5 +1,7 @@
+
 using UnityEngine;
 using System.Collections;
+using System.Collections.Generic;
 
 public enum VillagerRole
 {
@@ -26,8 +28,6 @@ public class VillagerStats
     public float discontent = 0f;   // Discontent level (0-100)
     
     [Header("Role Stats")]
-    public int maxHP = 100;
-    public int currentHP = 100;
     public int tier = 0;            // 0 = base, 1 = tier 1, 2 = tier 2
     public bool isActive = true;    // False if building destroyed
 }
@@ -51,19 +51,39 @@ public class Villager : MonoBehaviour
     [Header("Role Constants")]
     [SerializeField] private DiscontentConstants discontentConstants;
     
+    [Header("Rebellion System V1")]
+    [SerializeField] private float baseDiscontentRate = 1f; // Base discontent gain per second
+    [SerializeField] private float powerDiscontentReduction = 0.5f; // Reduction per power tier
+    [SerializeField] private float lowFoodDiscontentMultiplier = 2f; // Multiplier when food < 0.3
+    [SerializeField] private float angryCombatEfficiencyMultiplier = 0.5f; // Combat reduction when angry
+    
+    [Header("Food System")]
+    [SerializeField] private float baseFoodDecayRate = 1f; // Base food loss per second
+    [SerializeField] private float powerFoodDecayReduction = 0.3f; // Reduction per power tier
+    [SerializeField] private float lowFoodEfficiencyThreshold = 0.5f; // Food level below which efficiency drops
+    [SerializeField] private float lowFoodEfficiencyMultiplier = 0.7f; // Efficiency at low food
+    
     // State
     private VillagerState currentState = VillagerState.Loyal;
     private bool isFlashing = false;
     private Color originalColor;
+    private float lastDiscontentUpdate = 0f;
+    private float lastFoodUpdate = 0f;
     
     // Events
     public System.Action<Villager> OnVillagerRebel;
     public System.Action<Villager> OnVillagerDeath;
     public System.Action<Villager, float> OnDiscontentChanged;
+    public System.Action<Villager, VillagerState> OnStateChanged;
     
     // References
     private VillageManager villageManager;
     private VillagerCombat combatComponent;
+    private StatusIndicatorManager statusIndicators;
+    private VillagerHealth healthComponent;
+    
+    // UI state
+    private bool statsUIVisible = false;
     
     private void Start()
     {
@@ -71,6 +91,15 @@ public class Villager : MonoBehaviour
         SetupReferences();
         SetupCombatComponent();
         UpdateVisuals();
+    }
+    
+    private void Update()
+    {
+        // Update discontent based on current state
+        UpdateDiscontentOverTime();
+        
+        // Update food consumption
+        UpdateFoodConsumption();
     }
     
     private void InitializeVillager()
@@ -81,6 +110,13 @@ public class Villager : MonoBehaviour
         
         if (statsUI == null)
             statsUI = GetComponentInChildren<VillagerStatsUI>();
+        
+        // Get health component
+        healthComponent = GetComponent<VillagerHealth>();
+        if (healthComponent == null)
+        {
+            Debug.LogError($"Villager {gameObject.name} is missing VillagerHealth component!");
+        }
         
         // Store original color for flashing - ENSURE it's not black
         if (spriteRenderer != null)
@@ -95,12 +131,74 @@ public class Villager : MonoBehaviour
             }
         }
         
-        // Set initial HP based on role
-        SetInitialStats();
-        
         // Ensure proper initial state
         currentState = VillagerState.Loyal;
         UpdateVisuals();
+        
+        // Initialize status indicators
+        statusIndicators = GetComponentInChildren<StatusIndicatorManager>();
+        if (statusIndicators == null)
+        {
+            GameObject indicatorObj = new GameObject("StatusIndicators");
+            indicatorObj.transform.SetParent(transform);
+            indicatorObj.transform.localPosition = new Vector3(0, 1.5f, 0);
+            statusIndicators = indicatorObj.AddComponent<StatusIndicatorManager>();
+        }
+    }
+    
+    private void UpdateFoodConsumption()
+    {
+        if (Time.time - lastFoodUpdate < 0.1f) return; // Update every 0.1 seconds
+        lastFoodUpdate = Time.time;
+        
+        // Calculate food decay rate based on power tier
+        float foodDecayRate = baseFoodDecayRate * 0.1f; // Per 0.1 second
+        
+        // Power reduces food consumption
+        if (stats.tier > 0)
+        {
+            foodDecayRate -= (stats.tier * powerFoodDecayReduction * 0.1f);
+        }
+        
+        // Ensure food decay rate doesn't go negative
+        foodDecayRate = Mathf.Max(0f, foodDecayRate);
+        
+        // Decrease food
+        stats.food = Mathf.Max(0f, stats.food - foodDecayRate / 100f); // Divide by 100 to make it percentage
+        
+        // Update status indicators
+        if (statusIndicators != null)
+        {
+            statusIndicators.UpdateFoodStatus(stats.food < 0.3f);
+        }
+        
+        // Update combat efficiency based on food
+        UpdateFoodEfficiency();
+        
+        UpdateVisuals();
+    }
+    
+    private void UpdateFoodEfficiency()
+    {
+        if (combatComponent == null) return;
+
+        float baseEfficiency = 1f;
+
+        // Apply food efficiency penalty if food is low
+        if (stats.food < lowFoodEfficiencyThreshold)
+        {
+            // Linear interpolation between low efficiency and full efficiency
+            float foodEfficiency = Mathf.Lerp(lowFoodEfficiencyMultiplier, 1f, stats.food / lowFoodEfficiencyThreshold);
+            baseEfficiency *= foodEfficiency;
+        }
+
+        // Apply angry state penalty on top of food penalty
+        if (currentState == VillagerState.Angry)
+        {
+            baseEfficiency *= angryCombatEfficiencyMultiplier;
+        }
+
+        combatComponent.SetCombatEfficiency(baseEfficiency);
     }
 
     private void SetupCombatComponent()
@@ -108,7 +206,7 @@ public class Villager : MonoBehaviour
         // Check if combat component already exists
         combatComponent = GetComponent<VillagerCombat>();
         if (combatComponent != null) return; // Already has combat component
-        
+
         // Add appropriate combat component based on role
         switch (role)
         {
@@ -116,22 +214,22 @@ public class Villager : MonoBehaviour
                 combatComponent = gameObject.AddComponent<CommonerCombat>();
                 Debug.Log($"Added CommonerCombat to {gameObject.name}");
                 break;
-                
+
             case VillagerRole.Captain:
                 // combatComponent = gameObject.AddComponent<CaptainCombat>();
                 Debug.Log($"CaptainCombat not yet implemented for {gameObject.name}");
                 break;
-                
+
             case VillagerRole.Mage:
                 // combatComponent = gameObject.AddComponent<MageCombat>();
                 Debug.Log($"MageCombat not yet implemented for {gameObject.name}");
                 break;
-                
+
             case VillagerRole.Builder:
                 // Builders don't have combat
                 Debug.Log($"Builders don't engage in combat: {gameObject.name}");
                 break;
-                
+
             case VillagerRole.Farmer:
                 // Farmers don't have combat
                 Debug.Log($"Farmers don't engage in combat: {gameObject.name}");
@@ -148,29 +246,34 @@ public class Villager : MonoBehaviour
         }
     }
     
-    private void SetInitialStats()
+    private void UpdateDiscontentOverTime()
     {
-        // Set base HP by role
-        switch (role)
+        if (Time.time - lastDiscontentUpdate < 0.1f) return; // Update every 0.1 seconds
+        lastDiscontentUpdate = Time.time;
+        
+        // Don't update discontent for rebels
+        if (currentState == VillagerState.Rebel) return;
+        
+        // Calculate discontent rate based on power and food
+        float discontentRate = baseDiscontentRate * 0.1f; // Per 0.1 second
+        
+        // Power reduces discontent rate
+        if (stats.tier > 0)
         {
-            case VillagerRole.Captain:
-                stats.maxHP = 150;
-                break;
-            case VillagerRole.Farmer:
-                stats.maxHP = 80;
-                break;
-            case VillagerRole.Mage:
-                stats.maxHP = 70;
-                break;
-            case VillagerRole.Builder:
-                stats.maxHP = 120;
-                break;
-            case VillagerRole.Commoner:
-                stats.maxHP = 100;
-                break;
+            discontentRate -= (stats.tier * powerDiscontentReduction * 0.1f);
         }
         
-        stats.currentHP = stats.maxHP;
+        // Low food increases discontent rate
+        if (stats.food < 0.3f)
+        {
+            discontentRate *= lowFoodDiscontentMultiplier;
+        }
+        
+        // Only increase discontent if rate is positive
+        if (discontentRate > 0)
+        {
+            AddDiscontent(discontentRate);
+        }
     }
     
     public void AllocatePower(int powerAmount)
@@ -185,41 +288,45 @@ public class Villager : MonoBehaviour
         else
             stats.tier = 0;
         
-        // Update max HP based on tier (+20% per tier)
-        int baseHP = GetBaseMaxHP();
-        stats.maxHP = Mathf.RoundToInt(baseHP * (1f + stats.tier * 0.2f));
+        // Update health through VillagerHealth component
+        if (healthComponent != null)
+        {
+            healthComponent.UpdateHealthForTier(stats.tier);
+        }
         
-        // Heal to full if HP increased
-        if (stats.currentHP < stats.maxHP)
-            stats.currentHP = stats.maxHP;
-        
-        Debug.Log($"{role} {gameObject.name}: Allocated {powerAmount} power, Tier {stats.tier}, MaxHP {stats.maxHP}");
+        Debug.Log($"{role} {gameObject.name}: Allocated {powerAmount} power, Tier {stats.tier}");
         
         // Update combat stats if combat component exists
         if (combatComponent != null)
         {
             combatComponent.UpdateCombatStats();
+            
+            // Update efficiency considering both food and state
+            UpdateFoodEfficiency();
+        }
+        
+        // Update status indicators
+        if (statusIndicators != null)
+        {
+            statusIndicators.UpdatePowerTier(stats.tier);
         }
         
         UpdateVisuals();
     }
     
-    private int GetBaseMaxHP()
-    {
-        switch (role)
-        {
-            case VillagerRole.Captain: return 150;
-            case VillagerRole.Farmer: return 80;
-            case VillagerRole.Mage: return 70;
-            case VillagerRole.Builder: return 120;
-            case VillagerRole.Commoner: return 100;
-            default: return 100;
-        }
-    }
-    
     public void SetFoodLevel(float foodPercent)
     {
         stats.food = Mathf.Clamp01(foodPercent);
+        
+        // Update status indicators
+        if (statusIndicators != null)
+        {
+            statusIndicators.UpdateFoodStatus(stats.food < 0.3f);
+        }
+        
+        // Update combat efficiency when food changes
+        UpdateFoodEfficiency();
+        
         UpdateVisuals();
     }
     
@@ -268,13 +375,50 @@ public class Villager : MonoBehaviour
         
         OnDiscontentChanged?.Invoke(this, stats.discontent);
         
-        // Check for rebellion trigger
-        if (oldDiscontent < 100f && stats.discontent >= 100f && currentState == VillagerState.Loyal)
-        {
-            TriggerRebellion();
-        }
+        // Check for state changes based on discontent
+        UpdateStateBasedOnDiscontent();
         
         UpdateVisuals();
+    }
+    
+    private void UpdateStateBasedOnDiscontent()
+    {
+        VillagerState newState = currentState;
+        
+        if (stats.discontent >= 100f)
+        {
+            if (currentState != VillagerState.Rebel)
+            {
+                TriggerRebellion();
+            }
+        }
+        else if (stats.discontent >= 50f)
+        {
+            newState = VillagerState.Angry;
+        }
+        else
+        {
+            newState = VillagerState.Loyal;
+        }
+        
+        if (newState != currentState && currentState != VillagerState.Rebel)
+        {
+            ChangeState(newState);
+        }
+    }
+    
+    private void ChangeState(VillagerState newState)
+    {
+        VillagerState oldState = currentState;
+        currentState = newState;
+        
+        // Update combat efficiency considering both state and food
+        UpdateFoodEfficiency();
+        
+        OnStateChanged?.Invoke(this, newState);
+        UpdateVisuals();
+        
+        Debug.Log($"{role} {gameObject.name} state changed: {oldState} -> {newState}");
     }
     
     public void OnHitByPlayerFriendlyFire()
@@ -283,6 +427,19 @@ public class Villager : MonoBehaviour
         {
             AddDiscontent(discontentConstants.friendlyFirePenalty);
             Debug.Log($"{role} {gameObject.name} hit by friendly fire! +{discontentConstants.friendlyFirePenalty} discontent");
+        }
+    }
+    
+    public void OnWitnessedVillagerDeath(Villager killedVillager, bool killedByPlayer)
+    {
+        if (!killedByPlayer) return;
+        
+        // If a villager witnesses player killing another villager, instant rebellion
+        if (currentState != VillagerState.Rebel)
+        {
+            Debug.Log($"{role} {gameObject.name} witnessed player kill {killedVillager.name}! Instant rebellion!");
+            stats.discontent = 100f;
+            TriggerRebellion();
         }
     }
     
@@ -337,7 +494,14 @@ public class Villager : MonoBehaviour
         // Update combat component if exists
         if (combatComponent != null)
         {
+            combatComponent.SetCombatEfficiency(1f); // Rebels fight at full efficiency
             combatComponent.UpdateCombatStats();
+        }
+        
+        // Update health component
+        if (healthComponent != null)
+        {
+            healthComponent.ConvertToRebel();
         }
         
         // Notify rebellion event
@@ -390,6 +554,12 @@ public class Villager : MonoBehaviour
             color.a = stats.isActive ? originalColor.a : originalColor.a * 0.5f;
             spriteRenderer.color = color;
         }
+        
+        // Update status indicators
+        if (statusIndicators != null)
+        {
+            statusIndicators.UpdateDiscontentIndicator(stats.discontent, currentState);
+        }
     }
     
     private void UpdateStateSprite()
@@ -419,27 +589,11 @@ public class Villager : MonoBehaviour
         }
     }
     
-    public void TakeDamage(int damage)
-    {
-        stats.currentHP = Mathf.Max(0, stats.currentHP - damage);
-        
-        if (stats.currentHP <= 0)
-        {
-            Die();
-        }
-        
-        UpdateVisuals();
-    }
-    
-    private void Die()
+    // Called by VillagerHealth when villager dies
+    public void OnDeath()
     {
         OnVillagerDeath?.Invoke(this);
-        
-        // Visual death effect could go here
-        Debug.Log($"{role} {gameObject.name} has died!");
-        
-        // For now, just deactivate
-        gameObject.SetActive(false);
+        Debug.Log($"{role} {gameObject.name} death event triggered");
     }
     
     // Public getters
@@ -449,20 +603,39 @@ public class Villager : MonoBehaviour
     public bool IsActive() => stats.isActive;
     public bool IsLoyal() => currentState == VillagerState.Loyal;
     public bool IsRebel() => currentState == VillagerState.Rebel;
+    public bool IsAngry() => currentState == VillagerState.Angry;
     public float GetDiscontentPercentage() => stats.discontent / 100f;
+    public float GetCombatEfficiency()
+    {
+        float efficiency = 1f;
+        
+        // Food efficiency
+        if (stats.food < lowFoodEfficiencyThreshold)
+        {
+            efficiency *= Mathf.Lerp(lowFoodEfficiencyMultiplier, 1f, stats.food / lowFoodEfficiencyThreshold);
+        }
+        
+        // State efficiency
+        if (currentState == VillagerState.Angry)
+        {
+            efficiency *= angryCombatEfficiencyMultiplier;
+        }
+        
+        return efficiency;
+    }
     
     // Public setters for testing
     public void SetDiscontent(float amount)
     {
         stats.discontent = Mathf.Clamp(amount, 0f, 100f);
         OnDiscontentChanged?.Invoke(this, stats.discontent);
+        UpdateStateBasedOnDiscontent();
         UpdateVisuals();
     }
     
     public void SetRole(VillagerRole newRole)
     {
         role = newRole;
-        SetInitialStats();
         UpdateVisuals();
     }
     
@@ -478,6 +651,18 @@ public class Villager : MonoBehaviour
     public void ForceStateUpdate()
     {
         UpdateStateSprite();
+    }
+    
+    // Public methods for UI visibility
+    public void SetStatsUIVisible(bool visible)
+    {
+        statsUIVisible = visible;
+        
+        // Toggle status indicators - hide when stats UI is visible
+        if (statusIndicators != null)
+        {
+            statusIndicators.SetIndicatorsVisible(!visible);
+        }
     }
     
     // Editor helper

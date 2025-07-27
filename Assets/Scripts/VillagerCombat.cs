@@ -15,6 +15,9 @@ public abstract class VillagerCombat : MonoBehaviour
     [SerializeField] protected float cooldownReductionPerTier = 0.3f;
     [SerializeField] protected float rangeIncreasePerTier = 0.2f;
     
+    [Header("Combat Efficiency")]
+    [SerializeField] protected float combatEfficiency = 1f; // 1 = full efficiency, 0.5 = half
+    
     // Components
     protected Villager villager;
     protected VillagerAI villagerAI;
@@ -56,6 +59,7 @@ public abstract class VillagerCombat : MonoBehaviour
         {
             // Listen for power changes to update combat stats
             villager.OnVillagerRebel += HandleRebellion;
+            villager.OnStateChanged += HandleStateChanged;
         }
     }
     
@@ -84,8 +88,8 @@ public abstract class VillagerCombat : MonoBehaviour
         // Only rebels and loyal villagers during waves can combat
         if (villager.GetState() == VillagerState.Rebel) return true;
         
-        // Loyal villagers only fight during enemy waves
-        if (villager.GetState() == VillagerState.Loyal)
+        // Loyal and angry villagers only fight during enemy waves
+        if (villager.GetState() == VillagerState.Loyal || villager.GetState() == VillagerState.Angry)
         {
             // Check if there are enemies present
             return GameObject.FindGameObjectsWithTag("Enemy").Length > 0;
@@ -96,7 +100,10 @@ public abstract class VillagerCombat : MonoBehaviour
     
     protected virtual void UpdateTarget()
     {
-        if (Time.frameCount % 30 != 0) return; // Update every 30 frames
+        // Angry villagers update targets less frequently (reduced efficiency)
+        int frameInterval = villager.IsAngry() ? 60 : 30; // Update every 60 frames if angry, 30 if not
+        
+        if (Time.frameCount % frameInterval != 0) return;
         
         Transform nearestEnemy = FindNearestTarget();
         
@@ -124,14 +131,14 @@ public abstract class VillagerCombat : MonoBehaviour
         }
         else
         {
-            // Loyal villagers attack enemies
+            // Loyal and angry villagers attack enemies
             potentialTargets = GameObject.FindGameObjectsWithTag("Enemy");
         }
         
         if (potentialTargets == null || potentialTargets.Length == 0) return null;
         
         Transform nearest = null;
-        float nearestDistance = detectionRange;
+        float nearestDistance = detectionRange * combatEfficiency; // Reduced detection range when angry
         
         foreach (GameObject target in potentialTargets)
         {
@@ -182,7 +189,9 @@ public abstract class VillagerCombat : MonoBehaviour
     
     protected virtual bool CanAttack()
     {
-        return !isAttacking && Time.time - lastAttackTime >= currentAttackCooldown;
+        // Apply efficiency to attack cooldown (angry villagers attack slower)
+        float effectiveCooldown = currentAttackCooldown / combatEfficiency;
+        return !isAttacking && Time.time - lastAttackTime >= effectiveCooldown;
     }
     
     protected abstract IEnumerator PerformAttack();
@@ -191,34 +200,44 @@ public abstract class VillagerCombat : MonoBehaviour
     {
         if (currentTarget == null) return;
         
+        // Apply efficiency to damage
+        int effectiveDamage = Mathf.RoundToInt(currentDamage * combatEfficiency);
+        
         // Try various health component types
         Health health = currentTarget.GetComponent<Health>();
         if (health != null)
         {
-            health.TakeDamage(currentDamage);
-            OnDamageDealt?.Invoke(currentDamage);
+            health.TakeDamage(effectiveDamage);
+            OnDamageDealt?.Invoke(effectiveDamage);
             return;
         }
         
         EnemyHealth enemyHealth = currentTarget.GetComponent<EnemyHealth>();
         if (enemyHealth != null)
         {
-            enemyHealth.TakeDamage(currentDamage);
-            OnDamageDealt?.Invoke(currentDamage);
+            enemyHealth.TakeDamage(effectiveDamage);
+            OnDamageDealt?.Invoke(effectiveDamage);
             return;
         }
         
         PlayerHealth playerHealth = currentTarget.GetComponent<PlayerHealth>();
         if (playerHealth != null)
         {
-            playerHealth.TakeDamage(currentDamage);
-            OnDamageDealt?.Invoke(currentDamage);
+            playerHealth.TakeDamage(effectiveDamage);
+            OnDamageDealt?.Invoke(effectiveDamage);
             
             // Friendly fire increases discontent
-            if (villager.IsLoyal())
+            if (villager.IsLoyal() || villager.IsAngry())
             {
                 villager.OnHitByPlayerFriendlyFire();
             }
+        }
+        
+        VillagerHealth villagerHealth = currentTarget.GetComponent<VillagerHealth>();
+        if (villagerHealth != null)
+        {
+            villagerHealth.TakeDamage(effectiveDamage);
+            OnDamageDealt?.Invoke(effectiveDamage);
         }
     }
     
@@ -246,18 +265,32 @@ public abstract class VillagerCombat : MonoBehaviour
         }
     }
     
+    public void SetCombatEfficiency(float efficiency)
+    {
+        combatEfficiency = Mathf.Clamp01(efficiency);
+        Debug.Log($"{gameObject.name} combat efficiency set to {combatEfficiency:P0}");
+    }
+    
     protected virtual void HandleRebellion(Villager v)
     {
+        combatEfficiency = 1f; // Rebels fight at full efficiency
         UpdateCombatStats();
         // Clear current target to re-evaluate
         currentTarget = null;
     }
     
+    protected virtual void HandleStateChanged(Villager v, VillagerState newState)
+    {
+        // Combat efficiency is handled by Villager class
+        // This is here for any additional state-specific combat changes
+    }
+    
     protected virtual void OnDrawGizmosSelected()
     {
-        // Draw detection range
+        // Draw detection range (affected by efficiency)
         Gizmos.color = Color.yellow;
-        Gizmos.DrawWireSphere(transform.position, detectionRange);
+        float effectiveDetectionRange = detectionRange * combatEfficiency;
+        Gizmos.DrawWireSphere(transform.position, effectiveDetectionRange);
         
         // Draw attack range
         Gizmos.color = Color.red;
@@ -276,6 +309,7 @@ public abstract class VillagerCombat : MonoBehaviour
         if (villager != null)
         {
             villager.OnVillagerRebel -= HandleRebellion;
+            villager.OnStateChanged -= HandleStateChanged;
         }
     }
 }
