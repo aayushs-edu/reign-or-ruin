@@ -63,11 +63,13 @@ public class Villager : MonoBehaviour
     
     // References
     private VillageManager villageManager;
+    private VillagerCombat combatComponent;
     
     private void Start()
     {
         InitializeVillager();
         SetupReferences();
+        SetupCombatComponent();
         UpdateVisuals();
     }
     
@@ -99,6 +101,42 @@ public class Villager : MonoBehaviour
         // Ensure proper initial state
         currentState = VillagerState.Loyal;
         UpdateVisuals();
+    }
+
+    private void SetupCombatComponent()
+    {
+        // Check if combat component already exists
+        combatComponent = GetComponent<VillagerCombat>();
+        if (combatComponent != null) return; // Already has combat component
+        
+        // Add appropriate combat component based on role
+        switch (role)
+        {
+            case VillagerRole.Commoner:
+                combatComponent = gameObject.AddComponent<CommonerCombat>();
+                Debug.Log($"Added CommonerCombat to {gameObject.name}");
+                break;
+                
+            case VillagerRole.Captain:
+                // combatComponent = gameObject.AddComponent<CaptainCombat>();
+                Debug.Log($"CaptainCombat not yet implemented for {gameObject.name}");
+                break;
+                
+            case VillagerRole.Mage:
+                // combatComponent = gameObject.AddComponent<MageCombat>();
+                Debug.Log($"MageCombat not yet implemented for {gameObject.name}");
+                break;
+                
+            case VillagerRole.Builder:
+                // Builders don't have combat
+                Debug.Log($"Builders don't engage in combat: {gameObject.name}");
+                break;
+                
+            case VillagerRole.Farmer:
+                // Farmers don't have combat
+                Debug.Log($"Farmers don't engage in combat: {gameObject.name}");
+                break;
+        }
     }
     
     private void SetupReferences()
@@ -156,6 +194,12 @@ public class Villager : MonoBehaviour
             stats.currentHP = stats.maxHP;
         
         Debug.Log($"{role} {gameObject.name}: Allocated {powerAmount} power, Tier {stats.tier}, MaxHP {stats.maxHP}");
+        
+        // Update combat stats if combat component exists
+        if (combatComponent != null)
+        {
+            combatComponent.UpdateCombatStats();
+        }
         
         UpdateVisuals();
     }
@@ -282,6 +326,19 @@ public class Villager : MonoBehaviour
         
         // Change faction/tag for combat system
         gameObject.tag = "Enemy"; // Or whatever tag your combat system uses for enemies
+        
+        // Update AI to rebel mode
+        VillagerAI ai = GetComponent<VillagerAI>();
+        if (ai != null)
+        {
+            ai.SetRebel(true);
+        }
+        
+        // Update combat component if exists
+        if (combatComponent != null)
+        {
+            combatComponent.UpdateCombatStats();
+        }
         
         // Notify rebellion event
         OnVillagerRebel?.Invoke(this);

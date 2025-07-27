@@ -67,12 +67,26 @@ public class ThrowableWeaponSystem : MonoBehaviour
     [SerializeField] private Color chargedColor = Color.cyan;
     [SerializeField] private float minLightIntensity = 0f;
     [SerializeField] private float maxLightIntensity = 6f;
-    
+
+    // Add these new fields:
+    [SerializeField] private GameObject hitEffectPrefab;
+    [SerializeField] private float hitEffectMinLifetime = 0f;
+    [SerializeField] private float hitEffectMaxLifetime = 3f;
+    [SerializeField] private Vector3 hitEffectOffset = Vector3.zero;
+
     [Header("Particle Effects")]
     [SerializeField] private float minParticleLifetime = 0f;
     [SerializeField] private float maxParticleLifetime = 2f;
     [SerializeField] private bool scaleParticleIntensityWithCharge = true;
-    
+
+    // Add these new fields:
+    [SerializeField] private float minEmissionRate = 0f;
+    [SerializeField] private float maxEmissionRate = 50f;
+    [SerializeField] private float minStartSize = 0.1f;
+    [SerializeField] private float maxStartSize = 1f;
+    [SerializeField] private AnimationCurve emissionCurve = AnimationCurve.Linear(0, 0, 1, 1);
+    [SerializeField] private AnimationCurve sizeCurve = AnimationCurve.Linear(0, 0, 1, 1);
+
     [Header("Physics Settings")]
     [SerializeField] private LayerMask groundLayers = 1; // What counts as ground
     [SerializeField] private float groundCheckDistance = 0.5f;
@@ -85,12 +99,20 @@ public class ThrowableWeaponSystem : MonoBehaviour
 
     [Header("Audio")]
     [SerializeField] private AudioClip throwSound;
-    [SerializeField] private AudioClip returnSound;
     [SerializeField] private AudioClip hitSound;
     [SerializeField] private AudioClip swingSound;
     [SerializeField] private AudioClip pickupSound;
-    
+    [SerializeField] private float volume = 1f;
+
+    // Add these new fields:
+    [SerializeField] private AudioClip idleSound; // Looping crackling sound
+    [SerializeField] private bool scaleVolumeWithCharge = true;
+    [SerializeField] private float minVolume = 0.1f;
+    [SerializeField] private AnimationCurve volumeCurve = AnimationCurve.Linear(0, 0, 1, 1);
+    [SerializeField] private float idleVolumeMultiplier = 0.5f; // Idle sound is usually quieter
+
     // State variables
+    private AudioSource idleAudioSource;
     private WeaponState currentState = WeaponState.Held;
     private float currentCharge;
     private float aimStartTime;
@@ -133,9 +155,44 @@ public class ThrowableWeaponSystem : MonoBehaviour
         currentCharge = maxCharge;
         originalPosition = weaponTransform.localPosition;
         targetCameraSize = normalFOV;
-        
-        // Store original parent (should be the player)
         originalParent = transform.parent;
+        
+        // Start idle sound if available
+        if (idleAudioSource != null && idleSound != null)
+        {
+            idleAudioSource.Play();
+            UpdateIdleSound(); // Set initial volume
+        }
+    }
+    
+    private void UpdateIdleSound()
+    {
+        if (idleAudioSource == null || !scaleVolumeWithCharge) return;
+        
+        float chargeLevel = currentCharge / maxCharge;
+        float targetVolume = 0f;
+        
+        // Only play idle sound when weapon is held and has some charge
+        if (currentState == WeaponState.Held || currentState == WeaponState.Aiming)
+        {
+            float curveValue = volumeCurve.Evaluate(chargeLevel);
+            targetVolume = Mathf.Lerp(minVolume, 1f, curveValue) * idleVolumeMultiplier;
+            
+            // Extra intensity when aiming
+            if (isAiming && currentIntensity > 1f)
+            {
+                float intensityBoost = (currentIntensity - 1f) / (maxIntensityMultiplier - 1f);
+                targetVolume *= (1f + intensityBoost * 0.3f); // 30% louder when charging
+            }
+        }
+        
+        idleAudioSource.volume = targetVolume;
+        
+        // Mute completely at very low charge or when not held
+        if (chargeLevel < 0.05f || currentState == WeaponState.Dropped || currentState == WeaponState.Thrown)
+        {
+            idleAudioSource.volume = 0f;
+        }
     }
     
     private void InitializeComponents()
@@ -144,22 +201,35 @@ public class ThrowableWeaponSystem : MonoBehaviour
         playerMovement = GetComponentInParent<PlayerMovement>();
         mainCamera = Camera.main;
         audioSource = GetComponent<AudioSource>();
-        
+
         if (audioSource == null)
         {
             audioSource = gameObject.AddComponent<AudioSource>();
         }
-        
+
+        // Add idle audio source
+        idleAudioSource = transform.Find("IdleAudioSource")?.GetComponent<AudioSource>();
+        if (idleAudioSource == null && idleSound != null)
+        {
+            GameObject idleAudioObj = new GameObject("IdleAudioSource");
+            idleAudioObj.transform.SetParent(transform);
+            idleAudioObj.transform.localPosition = Vector3.zero;
+            idleAudioSource = idleAudioObj.AddComponent<AudioSource>();
+            idleAudioSource.loop = true;
+            idleAudioSource.playOnAwake = false;
+            idleAudioSource.clip = idleSound;
+        }
+
         if (weaponTransform == null) weaponTransform = transform;
         if (weaponRenderer == null) weaponRenderer = GetComponent<SpriteRenderer>();
         if (weaponLight == null) weaponLight = GetComponentInChildren<Light2D>();
         if (weaponCollider == null) weaponCollider = GetComponent<Collider2D>();
-        
+
         if (autoFindParticles && weaponParticles == null)
         {
             weaponParticles = GetComponentInChildren<ParticleSystem>();
         }
-        
+
         if (weaponCollider != null)
         {
             weaponCollider.isTrigger = true;
@@ -184,6 +254,40 @@ public class ThrowableWeaponSystem : MonoBehaviour
         UpdateParticleEffects();
     }
     
+    private void SpawnHitEffect(Vector3 position)
+    {
+        if (hitEffectPrefab == null) return;
+        
+        // Calculate effect lifetime based on charge
+        float chargeLevel = currentCharge / maxCharge;
+        float effectLifetime = Mathf.Lerp(hitEffectMinLifetime, hitEffectMaxLifetime, chargeLevel);
+        
+        // Don't spawn if lifetime would be 0
+        if (effectLifetime <= 0) return;
+        
+        // Spawn the effect
+        GameObject effect = Instantiate(hitEffectPrefab, position + hitEffectOffset, Quaternion.identity);
+        
+        // Scale particle system lifetime if it has one
+        ParticleSystem effectParticles = effect.GetComponent<ParticleSystem>();
+        if (effectParticles != null)
+        {
+            var main = effectParticles.main;
+            main.duration = effectLifetime;
+            main.startLifetime = effectLifetime;
+            
+            // Optionally scale other properties based on charge
+            var emission = effectParticles.emission;
+            emission.rateOverTime = emission.rateOverTime.constant * chargeLevel;
+            
+            // Play the particle system
+            effectParticles.Play();
+        }
+        
+        // Destroy after lifetime (add a small buffer for particle fade)
+        Destroy(effect, effectLifetime + 0.5f);
+    }
+    
     private void HandleInput()
     {
         if (currentState == WeaponState.Dropped)
@@ -195,12 +299,12 @@ public class ThrowableWeaponSystem : MonoBehaviour
             }
             return;
         }
-        
+
         if (currentState == WeaponState.Thrown || currentState == WeaponState.Returning || currentState == WeaponState.Swinging)
         {
             return;
         }
-        
+
         // Right mouse button for aiming
         if (Input.GetMouseButtonDown(1))
         {
@@ -214,7 +318,7 @@ public class ThrowableWeaponSystem : MonoBehaviour
         {
             StopAiming();
         }
-        
+
         // Left mouse button for throwing/swinging
         if (Input.GetMouseButtonDown(0))
         {
@@ -380,8 +484,11 @@ public class ThrowableWeaponSystem : MonoBehaviour
         }
         
         OnChargeChanged?.Invoke(currentCharge / maxCharge);
+        
+        // Update idle sound volume
+        UpdateIdleSound();
     }
-    
+        
     private void UpdateWeaponBehavior()
     {
         switch (currentState)
@@ -570,6 +677,9 @@ public class ThrowableWeaponSystem : MonoBehaviour
     
     private void HandleWeaponCollision(Collider2D hitCollider)
     {
+        // Spawn hit effect at collision point
+        SpawnHitEffect(hitCollider.ClosestPoint(transform.position));
+        
         float chargeMultiplier = currentCharge / maxCharge;
         int damage = Mathf.RoundToInt(baseDamage * (1f + chargeMultiplier) * thrownIntensity);
         
@@ -602,7 +712,6 @@ public class ThrowableWeaponSystem : MonoBehaviour
         if (currentCharge > 0f)
         {
             ChangeState(WeaponState.Returning);
-            PlaySound(returnSound);
         }
         else
         {
@@ -627,26 +736,29 @@ public class ThrowableWeaponSystem : MonoBehaviour
         {
             weaponCollider.enabled = false;
         }
+        
+        // Play pickup sound when weapon returns
+        PlaySound(pickupSound);
     }
     
     private void DropWeapon()
     {
         // Unparent the weapon from the player
         transform.SetParent(null);
-        
+
         ChangeState(WeaponState.Dropped);
         velocity = Vector3.zero;
         thrownIntensity = 1f;
-        
+
         // Keep collider enabled for trigger detection with ground
         if (weaponCollider != null)
         {
             weaponCollider.enabled = true; // Keep enabled for ground trigger detection
         }
-        
+
         // Check if weapon is on ground before applying physics
         CheckGroundStatus();
-        
+
         if (!isOnGround)
         {
             // Weapon is in space - add physics to make it fall
@@ -655,10 +767,10 @@ public class ThrowableWeaponSystem : MonoBehaviour
             {
                 rb = weaponTransform.gameObject.AddComponent<Rigidbody2D>();
             }
-            
+
             rb.gravityScale = fallGravity;
             rb.drag = fallDrag;
-            
+
             Debug.Log("Weapon dropped in space - falling to ground!");
         }
         else
@@ -734,23 +846,46 @@ public class ThrowableWeaponSystem : MonoBehaviour
         float chargeLevel = currentCharge / maxCharge;
         
         var main = weaponParticles.main;
+        var emission = weaponParticles.emission;
+        
+        // Update lifetime
         float targetLifetime = Mathf.Lerp(minParticleLifetime, maxParticleLifetime, chargeLevel);
         main.startLifetime = targetLifetime;
         
         if (scaleParticleIntensityWithCharge)
         {
-            var emission = weaponParticles.emission;
-            float baseEmissionRate = 10f;
-            emission.rateOverTime = baseEmissionRate * chargeLevel;
+            // Update emission rate based on charge
+            float emissionMultiplier = emissionCurve.Evaluate(chargeLevel);
+            float targetEmissionRate = Mathf.Lerp(minEmissionRate, maxEmissionRate, emissionMultiplier);
+            emission.rateOverTime = targetEmissionRate;
             
+            // Update start size based on charge
+            float sizeMultiplier = sizeCurve.Evaluate(chargeLevel);
+            float targetMinSize = Mathf.Lerp(minStartSize, maxStartSize, sizeMultiplier) * 0.8f; // 80% for min
+            float targetMaxSize = Mathf.Lerp(minStartSize, maxStartSize, sizeMultiplier);
+            
+            // Set random between two constants for size
+            var startSize = main.startSize;
+            startSize.mode = ParticleSystemCurveMode.TwoConstants;
+            startSize.constantMin = targetMinSize;
+            startSize.constantMax = targetMaxSize;
+            main.startSize = startSize;
+            
+            // Additional intensity boost when aiming
             if (isAiming && currentIntensity > 1f)
             {
                 float intensityBoost = currentIntensity / maxIntensityMultiplier;
-                emission.rateOverTime = baseEmissionRate * chargeLevel * (1f + intensityBoost);
+                emission.rateOverTime = targetEmissionRate * (1f + intensityBoost);
+                
+                // Also boost size slightly when aiming
+                startSize.constantMin = targetMinSize * (1f + intensityBoost * 0.2f);
+                startSize.constantMax = targetMaxSize * (1f + intensityBoost * 0.2f);
+                main.startSize = startSize;
             }
         }
         
-        if (currentState == WeaponState.Dropped || chargeLevel < 0.1f)
+        // Enable/disable particles based on state
+        if (currentState == WeaponState.Dropped || chargeLevel < 0.05f)
         {
             if (weaponParticles.isPlaying)
             {
@@ -766,25 +901,46 @@ public class ThrowableWeaponSystem : MonoBehaviour
         }
     }
     
+    public void SetParticleEmissionRange(float minRate, float maxRate)
+    {
+        minEmissionRate = minRate;
+        maxEmissionRate = maxRate;
+        UpdateParticleEffects();
+    }
+
+    public void SetParticleSizeRange(float minSize, float maxSize)
+    {
+        minStartSize = minSize;
+        maxStartSize = maxSize;
+        UpdateParticleEffects();
+    }
+
+    public void SetParticleCurves(AnimationCurve emission, AnimationCurve size)
+    {
+        emissionCurve = emission;
+        sizeCurve = size;
+        UpdateParticleEffects();
+    }
+        
     private void CheckGroundStatus()
     {
         // Check if weapon is touching ground using raycast downward
         Vector3 weaponPosition = weaponTransform.position;
         RaycastHit2D groundHit = Physics2D.Raycast(
-            weaponPosition, 
-            Vector2.down, 
-            groundCheckDistance, 
+            weaponPosition,
+            Vector2.down,
+            groundCheckDistance,
             groundLayers
         );
-        
+
         isOnGround = groundHit.collider != null;
-        
+
         // Also check for overlapping ground colliders (in case weapon is inside ground)
         if (!isOnGround)
         {
             Collider2D groundOverlap = Physics2D.OverlapCircle(
-                weaponPosition, 
-                0.1f, 
+                weaponPosition,
+                0.1f,
                 groundLayers
             );
             isOnGround = groundOverlap != null;
@@ -800,6 +956,19 @@ public class ThrowableWeaponSystem : MonoBehaviour
         
         OnStateChanged?.Invoke(newState);
         
+        // Update idle sound based on state
+        UpdateIdleSound();
+        
+        // Stop idle sound completely when dropped
+        if (newState == WeaponState.Dropped && idleAudioSource != null)
+        {
+            idleAudioSource.Stop();
+        }
+        else if (oldState == WeaponState.Dropped && newState == WeaponState.Held && idleAudioSource != null && idleSound != null)
+        {
+            idleAudioSource.Play();
+        }
+        
         Debug.Log($"Weapon state changed: {oldState} → {newState}");
     }
     
@@ -807,7 +976,7 @@ public class ThrowableWeaponSystem : MonoBehaviour
     {
         if (audioSource != null && clip != null)
         {
-            audioSource.PlayOneShot(clip);
+            audioSource.PlayOneShot(clip, volume);
         }
     }
     

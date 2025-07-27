@@ -1,109 +1,100 @@
 using UnityEngine;
 
-public class EnemyHealth : MonoBehaviour
+public class EnemyHealth : Health
 {
-    [Header("Health Settings")]
-    [SerializeField] private int maxHealth = 3;
-    [SerializeField] private int currentHealth;
+    [Header("Enemy Specific")]
+    [SerializeField] private int powerDropAmount = 1; // Power dropped when killed
+    [SerializeField] private bool dropPowerOnDeath = true;
+    [SerializeField] private float powerDropDelay = 0f; // Delay before dropping power
     
-    [Header("Visual Feedback")]
-    [SerializeField] private float flashDuration = 0.1f;
-    [SerializeField] private Color damageColor = Color.red;
+    [Header("Enemy Type")]
+    [SerializeField] private string enemyTypeName = "Enemy";
     
-    private SpriteRenderer spriteRenderer;
-    private Color originalColor;
-    private bool isFlashing = false;
-    private bool isDead = false;
-    
-    // Events
-    public System.Action OnDeath;
-    public System.Action<int> OnHealthChanged; // Current health
-    
-    private void Start()
+    protected override void Awake()
     {
-        currentHealth = maxHealth;
-        spriteRenderer = GetComponent<SpriteRenderer>();
+        base.Awake();
         
-        if (spriteRenderer != null)
+        // Enemies should show health bars by default
+        showHealthBar = true;
+        
+        // Set default values if not configured
+        if (maxHealth <= 0)
         {
-            originalColor = spriteRenderer.color;
+            maxHealth = 3; // Default enemy health
+            currentHealth = maxHealth;
         }
     }
     
-    public void TakeDamage(int damage)
+    protected override void Start()
     {
-        if (isDead) return; // Already dead, ignore further damage
+        base.Start();
         
-        currentHealth -= damage;
-        currentHealth = Mathf.Max(0, currentHealth);
-        
-        OnHealthChanged?.Invoke(currentHealth);
-        
-        // Visual feedback
-        if (spriteRenderer != null && !isFlashing)
+        // Ensure enemy has proper tag
+        if (!CompareTag("Enemy"))
         {
-            StartCoroutine(FlashDamage());
-        }
-        
-        if (currentHealth <= 0)
-        {
-            Die();
+            Debug.LogWarning($"EnemyHealth: {gameObject.name} doesn't have 'Enemy' tag. Setting it now.");
+            gameObject.tag = "Enemy";
         }
     }
     
-    private void Die()
+    protected override void Die()
     {
-        if (isDead) return; // Prevent multiple death calls
-        
-        isDead = true;
-        OnDeath?.Invoke();
-        
-        // Add death effect here if desired
-        // Instantiate(deathEffect, transform.position, Quaternion.identity);
-        
-        Destroy(gameObject);
-    }
-    
-    private System.Collections.IEnumerator FlashDamage()
-    {
-        isFlashing = true;
-        spriteRenderer.color = damageColor;
-        yield return new WaitForSeconds(flashDuration);
-        spriteRenderer.color = originalColor;
-        isFlashing = false;
-    }
-    
-    // Public getters
-    public int GetCurrentHealth() => currentHealth;
-    public int GetMaxHealth() => maxHealth;
-    public float GetHealthPercentage() => (float)currentHealth / maxHealth;
-    public bool IsDead() => isDead;
-    
-    // For collision detection with player attacks
-    private void OnTriggerEnter2D(Collider2D other)
-    {
-        if (isDead) return; // Don't process collisions if already dead
-        
-        // Debug what's triggering
-        Debug.Log($"Enemy {gameObject.name} triggered by: {other.gameObject.name} with tag: {other.tag}");
-        
-        if (other.CompareTag("Weapon"))
+        // Drop power before dying
+        if (dropPowerOnDeath && PowerSystem.Instance != null)
         {
-            // Check if it's a throwable weapon
-            ThrowableWeaponSystem throwableWeapon = other.GetComponent<ThrowableWeaponSystem>();
-            if (throwableWeapon != null)
+            if (powerDropDelay > 0)
             {
-                // Throwable weapon handles its own damage in HandleWeaponCollision
-                // Don't apply damage here to avoid double damage
-                return;
+                StartCoroutine(DropPowerAfterDelay());
             }
-            
-            // Handle regular weapon system or basic weapon damage
-            TakeDamage(1); // Basic damage, you can modify this
+            else
+            {
+                DropPower();
+            }
         }
         
-        // IMPORTANT: Don't damage from player collision
-        // Remove this if you had it:
-        // if (other.CompareTag("Player")) { TakeDamage(999); }
+        // Call base die (handles death effects, destruction, etc.)
+        base.Die();
     }
+    
+    private void DropPower()
+    {
+        if (PowerSystem.Instance != null)
+        {
+            PowerSystem.Instance.AddPowerFromEnemy(powerDropAmount);
+            Debug.Log($"{enemyTypeName} dropped {powerDropAmount} power");
+        }
+    }
+    
+    private System.Collections.IEnumerator DropPowerAfterDelay()
+    {
+        yield return new WaitForSeconds(powerDropDelay);
+        DropPower();
+    }
+    
+    // Public methods specific to enemies
+    public void SetPowerDropAmount(int amount)
+    {
+        powerDropAmount = amount;
+    }
+    
+    public int GetPowerDropAmount() => powerDropAmount;
+    
+    public void SetEnemyType(string typeName)
+    {
+        enemyTypeName = typeName;
+    }
+    
+    public string GetEnemyType() => enemyTypeName;
+    
+    // Override to customize enemy-specific damage behavior
+    protected override void OnDamageTaken()
+    {
+        base.OnDamageTaken();
+        
+        // You can add enemy-specific damage reactions here
+        // For example, alert nearby enemies, change AI state, etc.
+    }
+    
+    // Remove old collision detection since it's redundant
+    // Damage should be handled by weapon systems, not collision with player
 }
