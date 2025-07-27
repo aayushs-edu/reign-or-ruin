@@ -1,3 +1,4 @@
+// Enhanced VillagerStatsUI.cs - Add rebel interaction prevention
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -155,6 +156,13 @@ public class VillagerStatsUI : MonoBehaviour
     
     private void UpdateVisibility()
     {
+        // NEW: Check if villager can be interacted with (not a rebel)
+        if (villager != null && !villager.CanBeInteracted())
+        {
+            SetPanelVisible(false);
+            return;
+        }
+        
         if (alwaysShow)
         {
             SetPanelVisible(true);
@@ -175,22 +183,15 @@ public class VillagerStatsUI : MonoBehaviour
             shouldShow = true;
         }
         
-        // Always show if villager is angry or rebel
-        if (villager != null)
-        {
-            VillagerState state = villager.GetState();
-            if (state == VillagerState.Angry || state == VillagerState.Rebel)
-            {
-                shouldShow = true;
-            }
-        }
-        
         SetPanelVisible(shouldShow);
     }
     
     private bool IsMouseOverVillager()
     {
         if (playerCamera == null || villagerCollider == null) return false;
+        
+        // NEW: Don't allow interaction with rebels
+        if (villager != null && !villager.CanBeInteracted()) return false;
         
         Vector3 mouseWorldPos = playerCamera.ScreenToWorldPoint(Input.mousePosition);
         mouseWorldPos.z = 0f; // Ensure we're on the 2D plane
@@ -240,10 +241,11 @@ public class VillagerStatsUI : MonoBehaviour
             }
         }
         
-        // Health panel is always visible
+        // Health panel is always visible (except for rebels)
         if (healthOnlyPanel != null)
         {
-            healthOnlyPanel.SetActive(true);
+            bool showHealth = villager == null || villager.CanBeInteracted();
+            healthOnlyPanel.SetActive(showHealth);
         }
     }
     

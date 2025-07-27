@@ -1,4 +1,3 @@
-
 using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
@@ -47,6 +46,7 @@ public class Villager : MonoBehaviour
     [SerializeField] private Sprite loyalSprite;
     [SerializeField] private Sprite rebelSprite;
     [SerializeField] private Sprite angrySprite;
+    [SerializeField] private Sprite selectedSprite; // NEW: Sprite to show when hovered/selected
     
     [Header("Role Constants")]
     [SerializeField] private DiscontentConstants discontentConstants;
@@ -66,7 +66,9 @@ public class Villager : MonoBehaviour
     // State
     private VillagerState currentState = VillagerState.Loyal;
     private bool isFlashing = false;
+    private bool isSelected = false; // NEW: Track selection state
     private Color originalColor;
+    private Sprite originalSprite; // NEW: Store original sprite for restoration
     private float lastDiscontentUpdate = 0f;
     private float lastFoodUpdate = 0f;
     
@@ -118,10 +120,12 @@ public class Villager : MonoBehaviour
             Debug.LogError($"Villager {gameObject.name} is missing VillagerHealth component!");
         }
         
-        // Store original color for flashing - ENSURE it's not black
+        // Store original color and sprite for restoration
         if (spriteRenderer != null)
         {
             originalColor = spriteRenderer.color;
+            originalSprite = spriteRenderer.sprite; // NEW: Store original sprite
+            
             // Safety check - if color is black or transparent, set to white
             if (originalColor.r == 0f && originalColor.g == 0f && originalColor.b == 0f)
             {
@@ -144,6 +148,50 @@ public class Villager : MonoBehaviour
             indicatorObj.transform.localPosition = new Vector3(0, 1.5f, 0);
             statusIndicators = indicatorObj.AddComponent<StatusIndicatorManager>();
         }
+    }
+    
+    // NEW: Method to handle selection/hover state
+    public void SetSelected(bool selected)
+    {
+        if (isSelected == selected) return;
+        
+        // Rebels cannot be selected
+        if (currentState == VillagerState.Rebel && selected)
+        {
+            Debug.Log($"Cannot select rebel villager {gameObject.name}");
+            return;
+        }
+        
+        isSelected = selected;
+        
+        Debug.Log($"Villager {gameObject.name} selection set to: {selected}");
+        
+        // Immediately update the visual
+        UpdateSelectionVisual();
+    }
+    
+    // NEW: Update sprite based on selection state
+    private void UpdateSelectionVisual()
+    {
+        if (spriteRenderer == null) return;
+        
+        if (isSelected && selectedSprite != null && currentState != VillagerState.Rebel)
+        {
+            // Show selected sprite when hovering (but not for rebels)
+            spriteRenderer.sprite = selectedSprite;
+            Debug.Log($"Setting selected sprite for {gameObject.name}");
+        }
+        else
+        {
+            // Restore appropriate state sprite
+            UpdateStateSprite();
+        }
+    }
+    
+    // NEW: Check if villager can be interacted with
+    public bool CanBeInteracted()
+    {
+        return currentState != VillagerState.Rebel;
     }
     
     private void UpdateFoodConsumption()
@@ -412,6 +460,12 @@ public class Villager : MonoBehaviour
         VillagerState oldState = currentState;
         currentState = newState;
         
+        // NEW: If becoming a rebel, clear selection and disable interaction
+        if (newState == VillagerState.Rebel)
+        {
+            SetSelected(false);
+        }
+        
         // Update combat efficiency considering both state and food
         UpdateFoodEfficiency();
         
@@ -543,11 +597,11 @@ public class Villager : MonoBehaviour
             statsUI.UpdateStats(stats);
         }
         
-        // Update sprite based on state
-        UpdateStateSprite();
+        // Update sprite based on state and selection
+        UpdateSelectionVisual(); // NEW: This handles both state and selection
         
         // Update sprite transparency based on active state (but preserve color)
-        if (spriteRenderer != null && !isFlashing)
+        if (spriteRenderer != null && !isFlashing && !isSelected)
         {
             Color color = originalColor;
             // Only modify alpha, preserve RGB values
@@ -604,6 +658,7 @@ public class Villager : MonoBehaviour
     public bool IsLoyal() => currentState == VillagerState.Loyal;
     public bool IsRebel() => currentState == VillagerState.Rebel;
     public bool IsAngry() => currentState == VillagerState.Angry;
+    public bool IsSelected() => isSelected; // NEW: Getter for selection state
     public float GetDiscontentPercentage() => stats.discontent / 100f;
     public float GetCombatEfficiency()
     {
@@ -640,11 +695,12 @@ public class Villager : MonoBehaviour
     }
     
     // Sprite management methods
-    public void SetStateSprites(Sprite loyal, Sprite rebel, Sprite angry = null)
+    public void SetStateSprites(Sprite loyal, Sprite rebel, Sprite angry = null, Sprite selected = null)
     {
         loyalSprite = loyal;
         rebelSprite = rebel;
         angrySprite = angry;
+        if (selected != null) selectedSprite = selected; // NEW: Set selected sprite
         UpdateVisuals();
     }
     
@@ -663,6 +719,9 @@ public class Villager : MonoBehaviour
         {
             statusIndicators.SetIndicatorsVisible(!visible);
         }
+        
+        // NEW: Update selection state based on UI visibility
+        SetSelected(visible);
     }
     
     // Editor helper

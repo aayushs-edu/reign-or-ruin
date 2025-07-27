@@ -565,22 +565,24 @@ MonoBehaviour:
     power: 0
     food: 1
     discontent: 0
-    maxHP: 100
-    currentHP: 100
     tier: 0
     isActive: 1
   buildingTransform: {fileID: 0}
-  spriteRenderer: {fileID: 0}
+  spriteRenderer: {fileID: 1368059223927297489}
   statsUI: {fileID: 8450067487062693657}
   loyalSprite: {fileID: 21300000, guid: 6c9c30a0cc5bb504d9edf6849355876c, type: 3}
   rebelSprite: {fileID: 21300000, guid: c37f5347090e6a543b38d1d15e5ea2f8, type: 3}
   angrySprite: {fileID: 21300000, guid: 6c9c30a0cc5bb504d9edf6849355876c, type: 3}
+  selectedSprite: {fileID: 21300000, guid: 7d2f4ff3459d4414b98b5bdd66df91a3, type: 3}
   discontentConstants: {fileID: 11400000, guid: 395433a6016638045a3797984f7717bf, type: 2}
   baseDiscontentRate: 1
   powerDiscontentReduction: 0.5
   lowFoodDiscontentMultiplier: 2
-  witnessDeathRadius: 5
   angryCombatEfficiencyMultiplier: 0.5
+  baseFoodDecayRate: 1
+  powerFoodDecayReduction: 0.3
+  lowFoodEfficiencyThreshold: 0.5
+  lowFoodEfficiencyMultiplier: 0.7
 --- !u!114 &5865167024654171421
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -622,6 +624,7 @@ MonoBehaviour:
   powerDropOnDeath: 5
   canRebel: 1
   rebelHealthMultiplier: 1.5
+  witnessDeathRadius: 20
 --- !u!114 &8677522615383418635
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -687,6 +690,7 @@ MonoBehaviour:
   cooldownReductionPerTier: 0.3
   rangeIncreasePerTier: 0.2
   combatEfficiency: 1
+  debugTargeting: 0
   shovelTransform: {fileID: 4008449327121832919}
   shovelSprite: {fileID: 8997024755573646382}
   attackFXObject: {fileID: 7887732079947808441}
@@ -697,6 +701,7 @@ MonoBehaviour:
   idleRotation: 0
   combatReadyDistance: 10
   shovelSpriteOffset: {x: 0, y: 0.5, z: 0}
+  debugCombat: 1
 --- !u!114 &581848435473750662
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3094,12 +3099,12 @@ MonoBehaviour:
   onlyDamageOnce: 1
   damageLayers:
     serializedVersion: 2
-    m_Bits: 128
+    m_Bits: 1216
   hitEffectPrefab: {fileID: 7887732079947808441}
   hitEffectOffset: {x: 0, y: 0, z: 0}
   parentEffectToTarget: 0
   effectAutoDestroyTime: 2
-  debugMode: 0
+  debugMode: 1
 --- !u!1 &9106471973443013909
 GameObject:
   m_ObjectHideFlags: 0

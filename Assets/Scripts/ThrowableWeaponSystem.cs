@@ -641,7 +641,6 @@ public class ThrowableWeaponSystem : MonoBehaviour
                     if (villagerHealth != null)
                     {
                         villagerHealth.TakeDamage(damage);
-                        villagerHealth.GetComponent<Villager>().AddDiscontent(5f); // Add discontent for friendly fire
                         OnDamageDealt?.Invoke(damage);
                         PlaySound(hitSound);
                         hitSomething = true;
@@ -729,11 +728,13 @@ public class ThrowableWeaponSystem : MonoBehaviour
             }
         }
         
-        // Check for villager health component (alternative)
+        // Check for villager health component - PASS PLAYER AS DAMAGE SOURCE
         VillagerHealth villagerHealth = hitCollider.GetComponent<VillagerHealth>();
         if (villagerHealth != null)
         {
-            villagerHealth.TakeDamage(damage);
+            // Find the player GameObject to pass as damage source
+            GameObject player = GameObject.FindGameObjectWithTag("Player");
+            villagerHealth.TakeDamage(damage, player); // Pass player as damage source
             OnDamageDealt?.Invoke(damage);
             PlaySound(hitSound);
             hitSomething = true;

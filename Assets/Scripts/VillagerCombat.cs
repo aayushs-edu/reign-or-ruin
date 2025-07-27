@@ -18,6 +18,9 @@ public abstract class VillagerCombat : MonoBehaviour
     [Header("Combat Efficiency")]
     [SerializeField] protected float combatEfficiency = 1f; // 1 = full efficiency, 0.5 = half
     
+    [Header("Debug")]
+    [SerializeField] protected bool debugTargeting = false;
+    
     // Components
     protected Villager villager;
     protected VillagerAI villagerAI;
@@ -88,13 +91,34 @@ public abstract class VillagerCombat : MonoBehaviour
         // Only rebels and loyal villagers during waves can combat
         if (villager.GetState() == VillagerState.Rebel) return true;
         
-        // Loyal and angry villagers only fight during enemy waves
+        // Loyal and angry villagers fight during enemy waves AND against rebels
         if (villager.GetState() == VillagerState.Loyal || villager.GetState() == VillagerState.Angry)
         {
-            // Check if there are enemies present
-            return GameObject.FindGameObjectsWithTag("Enemy").Length > 0;
+            // Check if there are enemies present OR rebels present
+            bool hasEnemies = GameObject.FindGameObjectsWithTag("Enemy").Length > 0;
+            bool hasRebels = HasNearbyRebels();
+            
+            return hasEnemies || hasRebels;
         }
         
+        return false;
+    }
+    
+    private bool HasNearbyRebels()
+    {
+        // Check for rebel villagers in detection range
+        Villager[] allVillagers = FindObjectsOfType<Villager>();
+        foreach (var v in allVillagers)
+        {
+            if (v != villager && v.IsRebel())
+            {
+                float distance = Vector3.Distance(transform.position, v.transform.position);
+                if (distance <= detectionRange)
+                {
+                    return true;
+                }
+            }
+        }
         return false;
     }
     
@@ -109,6 +133,11 @@ public abstract class VillagerCombat : MonoBehaviour
         
         if (nearestEnemy != currentTarget)
         {
+            if (debugTargeting)
+            {
+                Debug.Log($"{villager.name} ({villager.GetState()}) target changed from {(currentTarget?.name ?? "none")} to {(nearestEnemy?.name ?? "none")}");
+            }
+            
             currentTarget = nearestEnemy;
             OnTargetAcquired?.Invoke(currentTarget);
             
@@ -122,33 +151,65 @@ public abstract class VillagerCombat : MonoBehaviour
     
     protected virtual Transform FindNearestTarget()
     {
-        GameObject[] potentialTargets = null;
+        Transform nearest = null;
+        float nearestDistance = detectionRange * combatEfficiency; // Reduced detection range when angry
         
         if (villager.GetState() == VillagerState.Rebel)
         {
             // Rebels attack player and loyal villagers
-            potentialTargets = GetRebelTargets();
+            var potentialTargets = GetRebelTargets();
+            
+            foreach (GameObject target in potentialTargets)
+            {
+                if (target == gameObject) continue;
+                
+                float distance = Vector3.Distance(transform.position, target.transform.position);
+                if (distance < nearestDistance)
+                {
+                    nearestDistance = distance;
+                    nearest = target.transform;
+                }
+            }
         }
         else
         {
-            // Loyal and angry villagers attack enemies
-            potentialTargets = GameObject.FindGameObjectsWithTag("Enemy");
-        }
-        
-        if (potentialTargets == null || potentialTargets.Length == 0) return null;
-        
-        Transform nearest = null;
-        float nearestDistance = detectionRange * combatEfficiency; // Reduced detection range when angry
-        
-        foreach (GameObject target in potentialTargets)
-        {
-            if (target == gameObject) continue;
+            // Loyal and angry villagers attack enemies AND rebels
             
-            float distance = Vector3.Distance(transform.position, target.transform.position);
-            if (distance < nearestDistance)
+            // First check for traditional enemies
+            GameObject[] enemies = GameObject.FindGameObjectsWithTag("Enemy");
+            foreach (GameObject enemy in enemies)
             {
-                nearestDistance = distance;
-                nearest = target.transform;
+                if (enemy == gameObject) continue;
+                
+                float distance = Vector3.Distance(transform.position, enemy.transform.position);
+                if (distance < nearestDistance)
+                {
+                    nearestDistance = distance;
+                    nearest = enemy.transform;
+                }
+            }
+            
+            // IMPORTANT: Also check for rebel villagers
+            Villager[] allVillagers = FindObjectsOfType<Villager>();
+            foreach (Villager targetVillager in allVillagers)
+            {
+                if (targetVillager == villager) continue; // Skip self
+                
+                // Attack rebel villagers
+                if (targetVillager.IsRebel())
+                {
+                    float distance = Vector3.Distance(transform.position, targetVillager.transform.position);
+                    if (distance < nearestDistance)
+                    {
+                        nearestDistance = distance;
+                        nearest = targetVillager.transform;
+                        
+                        if (debugTargeting)
+                        {
+                            Debug.Log($"Loyal {villager.name} targeting rebel {targetVillager.name} at distance {distance}");
+                        }
+                    }
+                }
             }
         }
         
@@ -164,13 +225,12 @@ public abstract class VillagerCombat : MonoBehaviour
         if (player != null) targets.Add(player);
         
         // Add loyal villagers
-        GameObject[] villagers = GameObject.FindGameObjectsWithTag("Villager");
-        foreach (var v in villagers)
+        Villager[] allVillagers = FindObjectsOfType<Villager>();
+        foreach (Villager v in allVillagers)
         {
-            Villager vComponent = v.GetComponent<Villager>();
-            if (vComponent != null && vComponent.IsLoyal())
+            if (v != villager && v.IsLoyal())
             {
-                targets.Add(v);
+                targets.Add(v.gameObject);
             }
         }
         
@@ -236,7 +296,7 @@ public abstract class VillagerCombat : MonoBehaviour
         VillagerHealth villagerHealth = currentTarget.GetComponent<VillagerHealth>();
         if (villagerHealth != null)
         {
-            villagerHealth.TakeDamage(effectiveDamage);
+            villagerHealth.TakeDamage(effectiveDamage, gameObject);
             OnDamageDealt?.Invoke(effectiveDamage);
         }
     }
@@ -281,8 +341,13 @@ public abstract class VillagerCombat : MonoBehaviour
     
     protected virtual void HandleStateChanged(Villager v, VillagerState newState)
     {
-        // Combat efficiency is handled by Villager class
-        // This is here for any additional state-specific combat changes
+        // Clear target when state changes to force re-evaluation
+        currentTarget = null;
+        
+        if (debugTargeting)
+        {
+            Debug.Log($"{v.name} state changed to {newState}, clearing combat target");
+        }
     }
     
     protected virtual void OnDrawGizmosSelected()
@@ -299,7 +364,7 @@ public abstract class VillagerCombat : MonoBehaviour
         // Draw line to target
         if (currentTarget != null)
         {
-            Gizmos.color = Color.magenta;
+            Gizmos.color = villager != null && villager.IsRebel() ? Color.red : Color.magenta;
             Gizmos.DrawLine(transform.position, currentTarget.position);
         }
     }

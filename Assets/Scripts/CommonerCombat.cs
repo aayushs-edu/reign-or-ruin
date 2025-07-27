@@ -17,6 +17,9 @@ public class CommonerCombat : VillagerCombat
     [SerializeField] private float combatReadyDistance = 10f; // Distance at which shovel starts tracking
     [SerializeField] private Vector3 shovelSpriteOffset = new Vector3(0, 0.5f, 0); // Offset of sprite from pivot point
     
+    [Header("Debug")]
+    [SerializeField] private bool debugCombat = false;
+    
     // Cached components
     private Animator shovelAnimator;
     private Animator attackFXAnimator;
@@ -71,7 +74,7 @@ public class CommonerCombat : VillagerCombat
             if (shovelSprite != null)
             {
                 shovelAnimator = shovelSprite.GetComponent<Animator>();
-                if (shovelAnimator == null)
+                if (shovelAnimator == null && debugCombat)
                 {
                     Debug.LogWarning($"CommonerCombat: No Animator found on shovel sprite for {gameObject.name}!");
                 }
@@ -80,10 +83,11 @@ public class CommonerCombat : VillagerCombat
                 shovelDamageDealer = shovelSprite.GetComponent<ShovelDamageDealer>();
                 if (shovelDamageDealer == null)
                 {
-                    Debug.LogWarning($"CommonerCombat: No ShovelDamageDealer found, adding one to {shovelSprite.name}");
+                    if (debugCombat) Debug.LogWarning($"CommonerCombat: No ShovelDamageDealer found, adding one to {shovelSprite.name}");
                     shovelDamageDealer = shovelSprite.AddComponent<ShovelDamageDealer>();
                 }
-                Debug.Log($"CommonerCombat: Found/Added ShovelDamageDealer on {shovelSprite.name}");
+                
+                if (debugCombat) Debug.Log($"CommonerCombat: Found/Added ShovelDamageDealer on {shovelSprite.name}");
                 
                 // Apply sprite offset to position shovel sprite within container
                 shovelSprite.transform.localPosition = shovelSpriteOffset;
@@ -132,6 +136,18 @@ public class CommonerCombat : VillagerCombat
         if (shovelDamageDealer != null)
         {
             shovelDamageDealer.Initialize(this, villager);
+            
+            // IMPORTANT: Set initial damage value
+            shovelDamageDealer.SetDamage(currentDamage);
+            
+            if (debugCombat)
+            {
+                Debug.Log($"CommonerCombat: Initialized ShovelDamageDealer for {gameObject.name} with {currentDamage} damage");
+            }
+        }
+        else
+        {
+            Debug.LogError($"CommonerCombat: Could not set up ShovelDamageDealer for {gameObject.name}!");
         }
         
         // Apply initial shovel container position
@@ -223,6 +239,11 @@ public class CommonerCombat : VillagerCombat
     
     protected override IEnumerator PerformAttack()
     {
+        if (debugCombat)
+        {
+            Debug.Log($"CommonerCombat: {gameObject.name} starting attack on {currentTarget?.name}");
+        }
+        
         isAttacking = true;
         lastAttackTime = Time.time;
         
@@ -238,6 +259,17 @@ public class CommonerCombat : VillagerCombat
             shovelTransform.rotation = Quaternion.Euler(0, 0, angle);
         }
         
+        // CRITICAL: Update damage value before enabling damage dealing
+        if (shovelDamageDealer != null)
+        {
+            shovelDamageDealer.SetDamage(currentDamage);
+            
+            if (debugCombat)
+            {
+                Debug.Log($"CommonerCombat: Set shovel damage to {currentDamage} for {gameObject.name}");
+            }
+        }
+        
         // Trigger shovel attack animation FIRST
         if (shovelAnimator != null)
         {
@@ -250,17 +282,20 @@ public class CommonerCombat : VillagerCombat
                 attackAnimationDuration = clipInfo[0].clip.length;
             }
         }
-        else
+        else if (debugCombat)
         {
             Debug.LogWarning($"CommonerCombat: No shovel animator found on {gameObject.name}!");
         }
         
-        // Enable damage dealing AFTER animation starts
+        // CRITICAL: Enable damage dealing AFTER setting damage value
         if (shovelDamageDealer != null)
         {
-            shovelDamageDealer.SetDamage(currentDamage);
             shovelDamageDealer.EnableDamageDealing();
-            Debug.Log($"CommonerCombat: Enabled damage dealing for {gameObject.name} with {currentDamage} damage");
+            
+            if (debugCombat)
+            {
+                Debug.Log($"CommonerCombat: Enabled damage dealing for {gameObject.name} with {currentDamage} damage");
+            }
         }
         else
         {
@@ -283,14 +318,23 @@ public class CommonerCombat : VillagerCombat
         // Wait for animation to complete
         yield return new WaitForSeconds(attackAnimationDuration);
         
-        // Disable damage dealing after attack
+        // CRITICAL: Disable damage dealing after attack
         if (shovelDamageDealer != null)
         {
             shovelDamageDealer.DisableDamageDealing();
-            Debug.Log($"CommonerCombat: Disabled damage dealing for {gameObject.name}");
+            
+            if (debugCombat)
+            {
+                Debug.Log($"CommonerCombat: Disabled damage dealing for {gameObject.name}");
+            }
         }
         
         isAttacking = false;
+        
+        if (debugCombat)
+        {
+            Debug.Log($"CommonerCombat: {gameObject.name} finished attack");
+        }
     }
     
     private void FaceTarget()
@@ -335,18 +379,28 @@ public class CommonerCombat : VillagerCombat
         // Called by ShovelDamageDealer when damage is dealt
         OnDamageDealt?.Invoke(damageDealt);
         
+        if (debugCombat)
+        {
+            Debug.Log($"CommonerCombat: {gameObject.name} hit {enemy.name} for {damageDealt} damage!");
+        }
+        
         // You can add hit effects, sounds, etc. here
-        Debug.Log($"Commoner {gameObject.name} hit {enemy.name} for {damageDealt} damage!");
     }
     
     public override void UpdateCombatStats()
     {
+        // Call base implementation first
         base.UpdateCombatStats();
         
         // Update damage dealer with new stats
         if (shovelDamageDealer != null)
         {
             shovelDamageDealer.SetDamage(currentDamage);
+            
+            if (debugCombat)
+            {
+                Debug.Log($"CommonerCombat: Updated {gameObject.name} damage to {currentDamage}");
+            }
         }
         
         // Commoner-specific stat adjustments
@@ -359,6 +413,30 @@ public class CommonerCombat : VillagerCombat
             {
                 currentAttackCooldown *= 0.8f; // 20% faster attacks at tier 2
             }
+        }
+    }
+    
+    // IMPORTANT: Override the base DealDamage to prevent double damage
+    protected override void DealDamage()
+    {
+        // Don't call base.DealDamage() because ShovelDamageDealer handles all damage
+        // The base DealDamage would cause double damage since ShovelDamageDealer also deals damage
+        
+        if (debugCombat)
+        {
+            Debug.Log($"CommonerCombat: DealDamage called for {gameObject.name} - but ShovelDamageDealer handles damage, so doing nothing");
+        }
+    }
+    
+    // IMPORTANT: Ensure proper cleanup
+    protected override void OnDestroy()
+    {
+        base.OnDestroy();
+        
+        // Clean up shovel damage dealer
+        if (shovelDamageDealer != null)
+        {
+            shovelDamageDealer.DisableDamageDealing();
         }
     }
     
@@ -392,6 +470,10 @@ public class CommonerCombat : VillagerCombat
             Gizmos.DrawWireSphere(transform.position + shovelOffset, 0.1f);
             Gizmos.DrawWireSphere(transform.position - new Vector3(shovelOffset.x, -shovelOffset.y, shovelOffset.z), 0.1f);
         }
+        
+        // Draw combat ready distance
+        Gizmos.color = Color.green;
+        Gizmos.DrawWireSphere(transform.position, combatReadyDistance);
     }
     
     // Public method to update shovel offset at runtime
@@ -425,5 +507,22 @@ public class CommonerCombat : VillagerCombat
         {
             UpdateShovelPosition();
         }
+    }
+    
+    // DEBUGGING METHODS
+    [ContextMenu("Test Attack Animation")]
+    public void TestAttackAnimation()
+    {
+        if (Application.isPlaying)
+        {
+            StartCoroutine(PerformAttack());
+        }
+    }
+    
+    [ContextMenu("Force Update Combat Stats")]
+    public void ForceUpdateCombatStats()
+    {
+        UpdateCombatStats();
+        Debug.Log($"Combat stats updated for {gameObject.name}: Damage={currentDamage}, Cooldown={currentAttackCooldown}, Range={currentAttackRange}");
     }
 }

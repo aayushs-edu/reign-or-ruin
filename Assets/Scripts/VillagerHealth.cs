@@ -1,4 +1,4 @@
-// VillagerHealth.cs - Complete health management for villagers
+// Enhanced VillagerHealth.cs - Better damage source tracking
 using UnityEngine;
 
 public class VillagerHealth : Health
@@ -47,7 +47,7 @@ public class VillagerHealth : Health
                 maxHealth = 120;
                 break;
             case VillagerRole.Commoner:
-                maxHealth = 100;
+                maxHealth = 20;
                 break;
         }
         
@@ -73,8 +73,8 @@ public class VillagerHealth : Health
         
         UpdateHealthBar();
         
-        // Check if damage is from player
-        bool isPlayerDamage = damageSource != null && damageSource.CompareTag("Player");
+        // Enhanced damage source detection
+        bool isPlayerDamage = IsPlayerDamage(damageSource);
         
         Debug.Log($"{gameObject.name} took {damage} damage from {(damageSource != null ? damageSource.name : "unknown")} (IsPlayer: {isPlayerDamage})");
         
@@ -95,12 +95,54 @@ public class VillagerHealth : Health
         }
     }
     
+    private bool IsPlayerDamage(GameObject damageSource)
+    {
+        if (damageSource == null) return false;
+        
+        // Method 1: Direct player tag check
+        if (damageSource.CompareTag("Player"))
+        {
+            return true;
+        }
+        
+        // Method 2: Check if damage source is player weapon
+        if (damageSource.name.Contains("Weapon") || damageSource.name.Contains("weapon"))
+        {
+            // Check if weapon belongs to player
+            Transform parent = damageSource.transform.parent;
+            while (parent != null)
+            {
+                if (parent.CompareTag("Player"))
+                {
+                    return true;
+                }
+                parent = parent.parent;
+            }
+        }
+        
+        // Method 3: Check for ThrowableWeaponSystem (player's throwable weapon)
+        ThrowableWeaponSystem weaponSystem = damageSource.GetComponent<ThrowableWeaponSystem>();
+        if (weaponSystem != null)
+        {
+            return true;
+        }
+        
+        // Method 4: Check if damage source has player as root
+        Transform root = damageSource.transform.root;
+        if (root != null && root.CompareTag("Player"))
+        {
+            return true;
+        }
+        
+        return false;
+    }
+    
     protected override void Die()
     {
         if (isDead) return;
         
         // Check if killed by player
-        bool killedByPlayer = lastDamageSource != null && lastDamageSource.CompareTag("Player");
+        bool killedByPlayer = IsPlayerDamage(lastDamageSource);
         
         Debug.Log($"{gameObject.name} has died! Killed by player: {killedByPlayer}, Last damage source: {(lastDamageSource != null ? lastDamageSource.name : "none")}");
         
@@ -150,8 +192,8 @@ public class VillagerHealth : Health
         gameObject.tag = "Enemy"; // Change tag so enemies don't attack rebels
         
         // Increase health as rebel
-        int newMaxHealth = Mathf.RoundToInt(maxHealth * rebelHealthMultiplier);
-        SetMaxHealth(newMaxHealth, true);
+        // int newMaxHealth = Mathf.RoundToInt(maxHealth * rebelHealthMultiplier);
+        // SetMaxHealth(newMaxHealth, true);
         
         // Visual indicator
         if (spriteRenderer != null)
