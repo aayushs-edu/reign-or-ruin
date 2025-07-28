@@ -622,10 +622,11 @@ MonoBehaviour:
   healSound: {fileID: 8300000, guid: cfce0cea076109f478783201b2a9f57f, type: 3}
   showHealthBar: 1
   healthBarContainer: {fileID: 6653075211902865655}
-  powerDropOnDeath: 5
+  dropAllocatedPowerOnDeath: 1
   canRebel: 1
   rebelHealthMultiplier: 1.5
   witnessDeathRadius: 20
+  useOrbSystem: 1
 --- !u!114 &8677522615383418635
 MonoBehaviour:
   m_ObjectHideFlags: 0

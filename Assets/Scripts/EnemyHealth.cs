@@ -1,3 +1,4 @@
+// Enhanced EnemyHealth.cs - Integrates with PowerOrbSpawner
 using UnityEngine;
 
 public class EnemyHealth : Health
@@ -6,6 +7,7 @@ public class EnemyHealth : Health
     [SerializeField] private int powerDropAmount = 1; // Power dropped when killed
     [SerializeField] private bool dropPowerOnDeath = true;
     [SerializeField] private float powerDropDelay = 0f; // Delay before dropping power
+    [SerializeField] private bool useOrbSystem = true; // Use new orb system vs old direct power addition
     
     [Header("Enemy Type")]
     [SerializeField] private string enemyTypeName = "Enemy";
@@ -39,8 +41,10 @@ public class EnemyHealth : Health
     
     protected override void Die()
     {
+        if (isDead) return;
+        
         // Drop power before dying
-        if (dropPowerOnDeath && PowerSystem.Instance != null)
+        if (dropPowerOnDeath && powerDropAmount > 0)
         {
             if (powerDropDelay > 0)
             {
@@ -58,10 +62,17 @@ public class EnemyHealth : Health
     
     private void DropPower()
     {
-        if (PowerSystem.Instance != null)
+        if (useOrbSystem && PowerOrbSpawner.Instance != null)
         {
+            // Use new orb system
+            PowerOrbSpawner.Instance.SpawnFromEnemyDeath(transform.position, powerDropAmount);
+            Debug.Log($"{enemyTypeName} spawned power orb worth {powerDropAmount} power");
+        }
+        else if (PowerSystem.Instance != null)
+        {
+            // Fallback to old direct power addition
             PowerSystem.Instance.AddPowerFromEnemy(powerDropAmount);
-            Debug.Log($"{enemyTypeName} dropped {powerDropAmount} power");
+            Debug.Log($"{enemyTypeName} dropped {powerDropAmount} power directly");
         }
     }
     
@@ -86,6 +97,11 @@ public class EnemyHealth : Health
     
     public string GetEnemyType() => enemyTypeName;
     
+    public void SetUseOrbSystem(bool useOrbs)
+    {
+        useOrbSystem = useOrbs;
+    }
+    
     // Override to customize enemy-specific damage behavior
     protected override void OnDamageTaken()
     {
@@ -94,7 +110,4 @@ public class EnemyHealth : Health
         // You can add enemy-specific damage reactions here
         // For example, alert nearby enemies, change AI state, etc.
     }
-    
-    // Remove old collision detection since it's redundant
-    // Damage should be handled by weapon systems, not collision with player
 }

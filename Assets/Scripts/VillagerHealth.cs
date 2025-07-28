@@ -1,13 +1,14 @@
-// Enhanced VillagerHealth.cs - Better damage source tracking
+// Enhanced VillagerHealth.cs - Integrates with PowerOrbSpawner
 using UnityEngine;
 
 public class VillagerHealth : Health
 {
     [Header("Villager Specific")]
-    [SerializeField] private int powerDropOnDeath = 5;
+    [SerializeField] private bool dropAllocatedPowerOnDeath = true;
     [SerializeField] private bool canRebel = true;
     [SerializeField] private float rebelHealthMultiplier = 1.5f;
     [SerializeField] private float witnessDeathRadius = 5f;
+    [SerializeField] private bool useOrbSystem = true; // Use new orb system vs old direct power addition
     
     private bool isRebel = false;
     private VillagerAI villagerAI;
@@ -47,7 +48,7 @@ public class VillagerHealth : Health
                 maxHealth = 120;
                 break;
             case VillagerRole.Commoner:
-                maxHealth = 20;
+                maxHealth = 100;
                 break;
         }
         
@@ -146,16 +147,20 @@ public class VillagerHealth : Health
         
         Debug.Log($"{gameObject.name} has died! Killed by player: {killedByPlayer}, Last damage source: {(lastDamageSource != null ? lastDamageSource.name : "none")}");
         
+        // Drop allocated power as orbs when killed
+        if (dropAllocatedPowerOnDeath && villagerComponent != null)
+        {
+            int allocatedPower = villagerComponent.GetStats().power;
+            if (allocatedPower > 0)
+            {
+                DropAllocatedPower(allocatedPower);
+            }
+        }
+        
         // Notify nearby villagers if killed by player
         if (killedByPlayer)
         {
             NotifyNearbyVillagersOfDeath();
-        }
-        
-        // Drop power if killed
-        if (PowerSystem.Instance != null && powerDropOnDeath > 0)
-        {
-            PowerSystem.Instance.AddPowerFromEnemy(powerDropOnDeath);
         }
         
         // Notify villager component of death
@@ -165,6 +170,22 @@ public class VillagerHealth : Health
         }
         
         base.Die();
+    }
+    
+    private void DropAllocatedPower(int powerAmount)
+    {
+        if (useOrbSystem && PowerOrbSpawner.Instance != null)
+        {
+            // Use new orb system - villagers can drop multiple orbs if they had lots of power
+            PowerOrbSpawner.Instance.SpawnFromVillagerDeath(transform.position, powerAmount);
+            Debug.Log($"Villager {gameObject.name} spawned power orbs worth {powerAmount} total power");
+        }
+        else if (PowerSystem.Instance != null)
+        {
+            // Fallback to old direct power addition
+            PowerSystem.Instance.AddPowerFromEnemy(powerAmount);
+            Debug.Log($"Villager {gameObject.name} dropped {powerAmount} power directly");
+        }
     }
     
     private void NotifyNearbyVillagersOfDeath()
@@ -190,10 +211,6 @@ public class VillagerHealth : Health
         
         isRebel = true;
         gameObject.tag = "Enemy"; // Change tag so enemies don't attack rebels
-        
-        // Increase health as rebel
-        // int newMaxHealth = Mathf.RoundToInt(maxHealth * rebelHealthMultiplier);
-        // SetMaxHealth(newMaxHealth, true);
         
         // Visual indicator
         if (spriteRenderer != null)
@@ -234,6 +251,17 @@ public class VillagerHealth : Health
             case VillagerRole.Commoner: return 100;
             default: return 100;
         }
+    }
+    
+    // Public methods for configuration
+    public void SetDropAllocatedPowerOnDeath(bool dropPower)
+    {
+        dropAllocatedPowerOnDeath = dropPower;
+    }
+    
+    public void SetUseOrbSystem(bool useOrbs)
+    {
+        useOrbSystem = useOrbs;
     }
     
     public bool IsRebel() => isRebel;
