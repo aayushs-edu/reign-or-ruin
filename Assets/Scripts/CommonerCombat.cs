@@ -127,11 +127,6 @@ public class CommonerCombat : VillagerCombat
     {
         base.Start();
         
-        // Set commoner-specific base stats
-        baseDamage = 8;
-        baseAttackCooldown = 1.5f;
-        baseAttackRange = 1.5f;
-        
         // Configure damage dealer
         if (shovelDamageDealer != null)
         {

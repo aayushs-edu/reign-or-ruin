@@ -16,29 +16,17 @@ public class ShovelDamageDealer : MonoBehaviour
     [SerializeField] private bool parentEffectToTarget = false;
     [SerializeField] private float effectAutoDestroyTime = 2f; // Fallback if can't get animation length
     
-    [Header("Debug Settings")]
-    [SerializeField] private bool debugMode = true; // Enable by default for thorough debugging
-    [SerializeField] private bool logAllTriggers = true; // Log every trigger event
-    [SerializeField] private bool logTargetValidation = true; // Log target validation steps
-    [SerializeField] private bool logDamageAttempts = true; // Log damage dealing attempts
-    [SerializeField] private bool logComponentsFound = true; // Log what components are found
-    [SerializeField] private bool visualizeHits = true; // Draw debug rays on hits
+    [Header("Debug")]
+    [SerializeField] private bool debugMode = false;
     
     // References
     private CommonerCombat combatSystem;
     private Villager villager;
     private Collider2D damageCollider;
     
-    // State tracking
+    // State
     private bool canDealDamage = false;
     private HashSet<GameObject> damagedThisSwing = new HashSet<GameObject>();
-    private int totalTriggersThisSwing = 0;
-    private int validTargetsThisSwing = 0;
-    private int damageDealtThisSwing = 0;
-    
-    // Debug tracking
-    private float lastEnableTime = 0f;
-    private string lastAttackerInfo = "";
     
     private void Awake()
     {
@@ -46,386 +34,76 @@ public class ShovelDamageDealer : MonoBehaviour
         if (damageCollider != null)
         {
             damageCollider.isTrigger = true;
-            LogDebug($"AWAKE: Collider found and set to trigger. Type: {damageCollider.GetType().Name}", LogLevel.System);
         }
         else
         {
-            LogDebug($"AWAKE: ERROR - No Collider2D found!", LogLevel.Error);
+            Debug.LogError($"ShovelDamageDealer: No Collider2D found on {gameObject.name}!");
         }
-        
-        LogDebug($"AWAKE: ShovelDamageDealer initialized on {gameObject.name}", LogLevel.System);
-    }
-    
-    private void Start()
-    {
-        LogDebug($"START: GameObject active: {gameObject.activeInHierarchy}, Component enabled: {enabled}", LogLevel.System);
-        LogDebug($"START: Damage layers mask: {damageLayers.value} ({GetLayerNames(damageLayers)})", LogLevel.System);
     }
     
     public void Initialize(CommonerCombat combat, Villager villagerComponent)
     {
         combatSystem = combat;
         villager = villagerComponent;
-        
-        if (villager != null)
-        {
-            lastAttackerInfo = $"{villager.name} ({villager.GetRole()}, {villager.GetState()})";
-        }
-        
-        LogDebug($"INITIALIZE: Combat system set to {(combat != null ? combat.name : "NULL")}", LogLevel.System);
-        LogDebug($"INITIALIZE: Villager set to {lastAttackerInfo}", LogLevel.System);
     }
     
     public void SetDamage(int newDamage)
     {
-        int oldDamage = damage;
         damage = newDamage;
-        LogDebug($"SET_DAMAGE: Changed from {oldDamage} to {damage}", LogLevel.Important);
     }
     
     public void EnableDamageDealing()
     {
         canDealDamage = true;
         damagedThisSwing.Clear();
-        totalTriggersThisSwing = 0;
-        validTargetsThisSwing = 0;
-        damageDealtThisSwing = 0;
-        lastEnableTime = Time.time;
         
-        LogDebug($"ENABLE_DAMAGE: Damage dealing ENABLED for {lastAttackerInfo} with {damage} damage", LogLevel.Important);
-        LogDebug($"ENABLE_DAMAGE: Cleared damaged list, reset counters", LogLevel.System);
+        if (debugMode)
+        {
+            Debug.Log($"ShovelDamageDealer: Damage dealing enabled for {transform.root.name}");
+        }
     }
 
     public void DisableDamageDealing()
     {
-        bool wasEnabled = canDealDamage;
         canDealDamage = false;
-        
-        if (wasEnabled)
+
+        if (debugMode)
         {
-            float activeDuration = Time.time - lastEnableTime;
-            LogDebug($"DISABLE_DAMAGE: Damage dealing DISABLED for {lastAttackerInfo}", LogLevel.Important);
-            LogDebug($"SWING_SUMMARY: Duration: {activeDuration:F2}s, Triggers: {totalTriggersThisSwing}, Valid targets: {validTargetsThisSwing}, Damage dealt: {damageDealtThisSwing}", LogLevel.Important);
-            
-            if (totalTriggersThisSwing == 0)
-            {
-                LogDebug($"WARNING: No triggers detected during swing! Check collider setup.", LogLevel.Warning);
-            }
-            
-            if (validTargetsThisSwing == 0 && totalTriggersThisSwing > 0)
-            {
-                LogDebug($"WARNING: Triggers detected but no valid targets! Check targeting logic.", LogLevel.Warning);
-            }
-            
-            if (validTargetsThisSwing > 0 && damageDealtThisSwing == 0)
-            {
-                LogDebug($"ERROR: Valid targets found but no damage dealt! Check damage dealing logic.", LogLevel.Error);
-            }
+            Debug.Log($"ShovelDamageDealer: Damage dealing disabled for {transform.root.name}");
         }
     }
     
     private void OnTriggerEnter2D(Collider2D other)
     {
-        totalTriggersThisSwing++;
-        
-        if (logAllTriggers)
+        if (debugMode)
         {
-            LogDebug($"TRIGGER_{totalTriggersThisSwing}: Hit {other.name} (Tag: {other.tag}, Layer: {LayerMask.LayerToName(other.gameObject.layer)})", LogLevel.Trigger);
-            LogDebug($"TRIGGER_{totalTriggersThisSwing}: Can deal damage: {canDealDamage}, Already damaged: {damagedThisSwing.Contains(other.gameObject)}", LogLevel.Trigger);
+            Debug.Log($"ShovelDamageDealer: {transform.root.name} triggered with {other.gameObject.name} (Tag: {other.tag})");
         }
         
-        if (!canDealDamage) 
-        {
-            LogDebug($"TRIGGER_{totalTriggersThisSwing}: SKIPPED - Damage dealing disabled", LogLevel.Trigger);
-            return;
-        }
+        if (!canDealDamage) return;
         
         // Skip if we've already damaged this target this swing
-        if (onlyDamageOnce && damagedThisSwing.Contains(other.gameObject)) 
-        {
-            LogDebug($"TRIGGER_{totalTriggersThisSwing}: SKIPPED - Already damaged {other.name} this swing", LogLevel.Trigger);
-            return;
-        }
+        if (onlyDamageOnce && damagedThisSwing.Contains(other.gameObject)) return;
         
         // Check layer
-        if (damageLayers != -1 && !IsInLayerMask(other.gameObject.layer, damageLayers)) 
-        {
-            LogDebug($"TRIGGER_{totalTriggersThisSwing}: SKIPPED - Layer {LayerMask.LayerToName(other.gameObject.layer)} not in damage layers ({GetLayerNames(damageLayers)})", LogLevel.Trigger);
-            return;
-        }
+        if (damageLayers != -1 && !IsInLayerMask(other.gameObject.layer, damageLayers)) return;
         
-        // Check if valid target
-        bool isValid = IsValidTarget(other.gameObject);
-        if (!isValid)
-        {
-            LogDebug($"TRIGGER_{totalTriggersThisSwing}: SKIPPED - {other.name} is not a valid target", LogLevel.Trigger);
-            return;
-        }
-        
-        validTargetsThisSwing++;
-        LogDebug($"TRIGGER_{totalTriggersThisSwing}: VALID TARGET - Attempting to damage {other.name}", LogLevel.Important);
-        
+        // Determine if this is a valid target based on villager state
+        if (!IsValidTarget(other.gameObject)) return;
+
         // Try to deal damage
-        bool damageSuccess = TryDealDamage(other.gameObject);
-        if (damageSuccess)
+        if (TryDealDamage(other.gameObject))
         {
-            damageDealtThisSwing++;
             damagedThisSwing.Add(other.gameObject);
-            
-            // Spawn hit effect
+
+            // Spawn hit effect at impact point
             SpawnHitEffect(other);
-            
+
             // Notify combat system
             if (combatSystem != null)
             {
                 combatSystem.OnShovelHitEnemy(other.gameObject, damage);
-                LogDebug($"TRIGGER_{totalTriggersThisSwing}: Notified combat system of hit", LogLevel.System);
             }
-            
-            // Visual debug
-            if (visualizeHits)
-            {
-                Debug.DrawLine(transform.position, other.transform.position, Color.red, 2f);
-            }
-            
-            LogDebug($"TRIGGER_{totalTriggersThisSwing}: SUCCESS - Damaged {other.name} for {damage} damage!", LogLevel.Success);
-        }
-        else
-        {
-            LogDebug($"TRIGGER_{totalTriggersThisSwing}: FAILED - Could not damage {other.name}", LogLevel.Error);
-        }
-    }
-    
-    private bool IsValidTarget(GameObject target)
-    {
-        if (logTargetValidation)
-        {
-            LogDebug($"TARGET_VALIDATION: Checking if {target.name} is valid target", LogLevel.Validation);
-        }
-        
-        // Don't hit self
-        if (target.transform.IsChildOf(transform.root)) 
-        {
-            if (logTargetValidation) LogDebug($"TARGET_VALIDATION: INVALID - {target.name} is child of attacker", LogLevel.Validation);
-            return false;
-        }
-        
-        if (villager == null) 
-        {
-            if (logTargetValidation) LogDebug($"TARGET_VALIDATION: INVALID - No villager component on attacker", LogLevel.Validation);
-            return false;
-        }
-        
-        string attackerState = villager.GetState().ToString();
-        if (logTargetValidation)
-        {
-            LogDebug($"TARGET_VALIDATION: Attacker {villager.name} is {attackerState}", LogLevel.Validation);
-        }
-        
-        // Enhanced target validation based on villager faction status
-        if (villager.GetState() == VillagerState.Rebel)
-        {
-            // Rebels attack player and loyal villagers
-            if (target.CompareTag("Player")) 
-            {
-                if (logTargetValidation) LogDebug($"TARGET_VALIDATION: VALID - Rebel can attack player {target.name}", LogLevel.Validation);
-                return true;
-            }
-            
-            // Check for loyal villagers
-            if (target.CompareTag("Villager"))
-            {
-                Villager targetVillager = target.GetComponent<Villager>();
-                if (targetVillager != null)
-                {
-                    bool targetIsLoyal = targetVillager.IsLoyal();
-                    if (logTargetValidation) 
-                    {
-                        LogDebug($"TARGET_VALIDATION: Target villager {target.name} state: {targetVillager.GetState()}, IsLoyal: {targetIsLoyal}", LogLevel.Validation);
-                    }
-                    
-                    if (targetIsLoyal)
-                    {
-                        if (logTargetValidation) LogDebug($"TARGET_VALIDATION: VALID - Rebel can attack loyal villager {target.name}", LogLevel.Validation);
-                        return true;
-                    }
-                }
-                else
-                {
-                    if (logTargetValidation) LogDebug($"TARGET_VALIDATION: Target {target.name} has Villager tag but no Villager component", LogLevel.Validation);
-                }
-            }
-            
-            // Check if target is another rebel
-            Villager targetVillagerComponent = target.GetComponent<Villager>();
-            if (targetVillagerComponent != null && targetVillagerComponent.IsRebel())
-            {
-                if (logTargetValidation) LogDebug($"TARGET_VALIDATION: INVALID - Rebel will not attack fellow rebel {target.name}", LogLevel.Validation);
-                return false;
-            }
-        }
-        else
-        {
-            // Loyal/Angry villagers attack enemies and rebels
-            
-            // Attack anything tagged as "Enemy"
-            if (target.CompareTag("Enemy"))
-            {
-                if (logTargetValidation) LogDebug($"TARGET_VALIDATION: VALID - Loyal can attack enemy {target.name}", LogLevel.Validation);
-                return true;
-            }
-            
-            // Attack rebel villagers
-            Villager targetVillager = target.GetComponent<Villager>();
-            if (targetVillager != null)
-            {
-                bool targetIsRebel = targetVillager.IsRebel();
-                if (logTargetValidation)
-                {
-                    LogDebug($"TARGET_VALIDATION: Target villager {target.name} state: {targetVillager.GetState()}, IsRebel: {targetIsRebel}", LogLevel.Validation);
-                }
-                
-                if (targetIsRebel)
-                {
-                    if (logTargetValidation) LogDebug($"TARGET_VALIDATION: VALID - Loyal can attack rebel villager {target.name}", LogLevel.Validation);
-                    return true;
-                }
-            }
-        }
-        
-        if (logTargetValidation) LogDebug($"TARGET_VALIDATION: INVALID - {target.name} is not a valid target for {attackerState} {villager.name}", LogLevel.Validation);
-        return false;
-    }
-    
-    private bool TryDealDamage(GameObject target)
-    {
-        if (logDamageAttempts)
-        {
-            LogDebug($"DAMAGE_ATTEMPT: Trying to damage {target.name} with {damage} damage", LogLevel.Damage);
-        }
-        
-        // Log all health components on target
-        if (logComponentsFound)
-        {
-            LogComponentsOnTarget(target);
-        }
-        
-        // IMPORTANT: Try VillagerHealth FIRST since it inherits from Health
-        VillagerHealth villagerHealth = target.GetComponent<VillagerHealth>();
-        if (villagerHealth != null)
-        {
-            if (logDamageAttempts)
-            {
-                LogDebug($"DAMAGE_ATTEMPT: Found VillagerHealth, calling TakeDamage({damage}, {villager.gameObject.name})", LogLevel.Damage);
-            }
-            
-            villagerHealth.TakeDamage(damage, villager.gameObject);
-            
-            if (logDamageAttempts)
-            {
-                LogDebug($"DAMAGE_SUCCESS: Dealt {damage} damage to villager {target.name} via VillagerHealth", LogLevel.Success);
-            }
-            return true;
-        }
-        
-        // Try PlayerHealth
-        PlayerHealth playerHealth = target.GetComponent<PlayerHealth>();
-        if (playerHealth != null)
-        {
-            if (logDamageAttempts)
-            {
-                LogDebug($"DAMAGE_ATTEMPT: Found PlayerHealth, calling TakeDamage({damage})", LogLevel.Damage);
-            }
-            
-            playerHealth.TakeDamage(damage);
-            
-            // Friendly fire check
-            if (villager != null && villager.IsLoyal())
-            {
-                villager.OnHitByPlayerFriendlyFire();
-                LogDebug($"DAMAGE_SIDE_EFFECT: Triggered friendly fire penalty for loyal villager attacking player", LogLevel.System);
-            }
-            
-            if (logDamageAttempts)
-            {
-                LogDebug($"DAMAGE_SUCCESS: Dealt {damage} damage to player {target.name} via PlayerHealth", LogLevel.Success);
-            }
-            return true;
-        }
-        
-        // Try EnemyHealth
-        EnemyHealth enemyHealth = target.GetComponent<EnemyHealth>();
-        if (enemyHealth != null)
-        {
-            if (logDamageAttempts)
-            {
-                LogDebug($"DAMAGE_ATTEMPT: Found EnemyHealth, calling TakeDamage({damage})", LogLevel.Damage);
-            }
-            
-            enemyHealth.TakeDamage(damage);
-            
-            if (logDamageAttempts)
-            {
-                LogDebug($"DAMAGE_SUCCESS: Dealt {damage} damage to enemy {target.name} via EnemyHealth", LogLevel.Success);
-            }
-            return true;
-        }
-        
-        // Try generic Health component last
-        Health health = target.GetComponent<Health>();
-        if (health != null)
-        {
-            if (logDamageAttempts)
-            {
-                LogDebug($"DAMAGE_ATTEMPT: Found generic Health, calling TakeDamage({damage})", LogLevel.Damage);
-            }
-            
-            health.TakeDamage(damage);
-            
-            if (logDamageAttempts)
-            {
-                LogDebug($"DAMAGE_SUCCESS: Dealt {damage} damage to {target.name} via generic Health", LogLevel.Success);
-            }
-            return true;
-        }
-        
-        // No valid health component found
-        if (logDamageAttempts)
-        {
-            LogDebug($"DAMAGE_FAILED: No valid health component found on {target.name}!", LogLevel.Error);
-        }
-        
-        return false;
-    }
-    
-    private void LogComponentsOnTarget(GameObject target)
-    {
-        Component[] allComponents = target.GetComponents<Component>();
-        System.Text.StringBuilder componentList = new System.Text.StringBuilder();
-        
-        foreach (Component comp in allComponents)
-        {
-            if (comp != null)
-            {
-                componentList.Append(comp.GetType().Name).Append(", ");
-            }
-        }
-        
-        LogDebug($"COMPONENTS_ON_TARGET: {target.name} has components: {componentList.ToString().TrimEnd(',', ' ')}", LogLevel.System);
-        
-        // Specifically check for health components
-        Health[] healthComponents = target.GetComponents<Health>();
-        if (healthComponents.Length > 0)
-        {
-            LogDebug($"HEALTH_COMPONENTS: Found {healthComponents.Length} health components on {target.name}:", LogLevel.System);
-            foreach (Health h in healthComponents)
-            {
-                LogDebug($"  - {h.GetType().Name} (Current HP: {h.GetCurrentHealth()}/{h.GetMaxHealth()})", LogLevel.System);
-            }
-        }
-        else
-        {
-            LogDebug($"HEALTH_COMPONENTS: No health components found on {target.name}", LogLevel.Warning);
         }
     }
     
@@ -446,16 +124,14 @@ public class ShovelDamageDealer : MonoBehaviour
         // Instantiate effect
         GameObject effect = Instantiate(hitEffectPrefab, spawnPosition, Quaternion.identity);
         
-        LogDebug($"HIT_EFFECT: Spawned {hitEffectPrefab.name} at {spawnPosition} for hit on {hitTarget.name}", LogLevel.System);
-        
-        // Parent to target if desired
+        // Parent to target if desired (useful for effects that should follow the target)
         if (parentEffectToTarget)
         {
             effect.transform.SetParent(hitTarget.transform);
             effect.transform.localPosition = hitEffectOffset;
         }
         
-        // Handle cleanup
+        // Get animator and calculate destroy time
         Animator effectAnimator = effect.GetComponent<Animator>();
         if (effectAnimator != null)
         {
@@ -463,17 +139,31 @@ public class ShovelDamageDealer : MonoBehaviour
         }
         else
         {
+            // No animator, use fallback destroy time
             Destroy(effect, effectAutoDestroyTime);
+            
+            if (debugMode)
+            {
+                Debug.LogWarning($"Hit effect has no Animator, using fallback destroy time of {effectAutoDestroyTime}s");
+            }
+        }
+        
+        if (debugMode)
+        {
+            Debug.Log($"Spawned hit effect at {spawnPosition} for hit on {hitTarget.name}");
         }
     }
     
     private IEnumerator DestroyEffectAfterAnimation(GameObject effect, Animator animator)
     {
+        // Wait a frame for animator to start
         yield return null;
         
+        // Get current animation info
         AnimatorStateInfo stateInfo = animator.GetCurrentAnimatorStateInfo(0);
         float animationLength = stateInfo.length;
         
+        // If we can't get animation length, try from clip
         if (animationLength <= 0)
         {
             AnimatorClipInfo[] clipInfo = animator.GetCurrentAnimatorClipInfo(0);
@@ -483,13 +173,21 @@ public class ShovelDamageDealer : MonoBehaviour
             }
         }
         
+        // Use fallback if still no length
         if (animationLength <= 0)
         {
             animationLength = effectAutoDestroyTime;
+            
+            if (debugMode)
+            {
+                Debug.LogWarning($"Could not get animation length for hit effect, using fallback: {effectAutoDestroyTime}s");
+            }
         }
         
+        // Wait for animation to complete
         yield return new WaitForSeconds(animationLength);
         
+        // Destroy the effect
         if (effect != null)
         {
             Destroy(effect);
@@ -501,81 +199,122 @@ public class ShovelDamageDealer : MonoBehaviour
         return (layerMask.value & (1 << layer)) != 0;
     }
     
-    private string GetLayerNames(LayerMask layerMask)
+    private bool IsValidTarget(GameObject target)
     {
-        System.Text.StringBuilder layerNames = new System.Text.StringBuilder();
-        for (int i = 0; i < 32; i++)
+        // Don't hit self
+        // if (target.transform.IsChildOf(transform.root)) return false;
+        // if (villager == null) return false;
+        
+        // Get target villager component (if it exists)
+        Villager targetVillager = target.GetComponent<Villager>();
+        
+        if (villager.IsRebel())
         {
-            if ((layerMask.value & (1 << i)) != 0)
+            // Rebels attack: Player OR Loyal villagers
+            if (target.CompareTag("Player")) return true;
+            if (targetVillager != null && !targetVillager.IsRebel()) return true;
+        }
+        else
+        {
+            // Loyals attack: Enemies OR Rebel villagers  
+            if (target.CompareTag("Enemy")) return true;
+            if (targetVillager != null && targetVillager.IsRebel()) return true;
+        }
+        
+        return false;
+    }
+    
+    private bool TryDealDamage(GameObject target)
+    {
+        bool damageDealt = false;
+        
+        if (debugMode)
+        {
+            Debug.Log($"TryDealDamage: {villager.name} attempting to damage {target.name}");
+            
+            // Log all health components on target
+            Health[] healthComponents = target.GetComponents<Health>();
+            Debug.Log($"Target {target.name} has {healthComponents.Length} Health components:");
+            foreach (var h in healthComponents)
             {
-                string layerName = LayerMask.LayerToName(i);
-                if (!string.IsNullOrEmpty(layerName))
-                {
-                    layerNames.Append(layerName).Append(", ");
-                }
+                Debug.Log($"  - {h.GetType().Name}");
             }
         }
-        return layerNames.ToString().TrimEnd(',', ' ');
-    }
-    
-    // Enhanced logging system with different log levels
-    private enum LogLevel
-    {
-        System,     // Blue - System operations
-        Important,  // Green - Important events
-        Success,    // Green - Successful operations
-        Warning,    // Yellow - Warnings
-        Error,      // Red - Errors
-        Trigger,    // Cyan - Trigger events
-        Validation, // Magenta - Target validation
-        Damage      // Orange - Damage attempts
-    }
-    
-    private void LogDebug(string message, LogLevel level)
-    {
-        if (!debugMode) return;
         
-        // Filter logs based on settings
-        if (level == LogLevel.Trigger && !logAllTriggers) return;
-        if (level == LogLevel.Validation && !logTargetValidation) return;
-        if (level == LogLevel.Damage && !logDamageAttempts) return;
-        if (level == LogLevel.System && !logComponentsFound) return;
-        
-        string prefix = $"[SHOVEL-{gameObject.name}]";
-        string colorCode = GetColorCode(level);
-        string formattedMessage = $"{colorCode}{prefix} {message}</color>";
-        
-        switch (level)
+        // IMPORTANT: Try VillagerHealth FIRST since it inherits from Health
+        // If we try Health first, it will succeed but not handle villager-specific logic
+        VillagerHealth villagerHealth = target.GetComponent<VillagerHealth>();
+        if (villagerHealth != null)
         {
-            case LogLevel.Error:
-                Debug.LogError(formattedMessage);
-                break;
-            case LogLevel.Warning:
-                Debug.LogWarning(formattedMessage);
-                break;
-            default:
-                Debug.Log(formattedMessage);
-                break;
+            // Pass the attacking villager as the damage source for proper faction tracking
+            villagerHealth.TakeDamage(damage, villager.gameObject);
+            damageDealt = true;
+            
+            if (debugMode)
+            {
+                Debug.Log($"SUCCESS: {villager.name} ({villager.GetState()}) dealt {damage} damage to villager {target.name} via VillagerHealth");
+            }
+            return damageDealt;
         }
-    }
-    
-    private string GetColorCode(LogLevel level)
-    {
-        switch (level)
+        
+        // Try PlayerHealth next
+        PlayerHealth playerHealth = target.GetComponent<PlayerHealth>();
+        if (playerHealth != null)
         {
-            case LogLevel.System: return "<color=lightblue>";
-            case LogLevel.Important: return "<color=lime>";
-            case LogLevel.Success: return "<color=green>";
-            case LogLevel.Warning: return "<color=yellow>";
-            case LogLevel.Error: return "<color=red>";
-            case LogLevel.Trigger: return "<color=cyan>";
-            case LogLevel.Validation: return "<color=magenta>";
-            case LogLevel.Damage: return "<color=orange>";
-            default: return "<color=white>";
+            playerHealth.TakeDamage(damage);
+            damageDealt = true;
+            
+            // Friendly fire check
+            if (villager != null && villager.IsLoyal())
+            {
+                villager.OnHitByPlayerFriendlyFire();
+            }
+            
+            if (debugMode)
+            {
+                Debug.Log($"SUCCESS: {villager.name} dealt {damage} damage to player {target.name} via PlayerHealth");
+            }
+            return damageDealt;
         }
+        
+        // Try EnemyHealth
+        EnemyHealth enemyHealth = target.GetComponent<EnemyHealth>();
+        if (enemyHealth != null)
+        {
+            enemyHealth.TakeDamage(damage);
+            damageDealt = true;
+            
+            if (debugMode)
+            {
+                Debug.Log($"SUCCESS: {villager.name} dealt {damage} damage to enemy {target.name} via EnemyHealth");
+            }
+            return damageDealt;
+        }
+        
+        // Try generic Health component last (fallback)
+        Health health = target.GetComponent<Health>();
+        if (health != null)
+        {
+            health.TakeDamage(damage);
+            damageDealt = true;
+            
+            if (debugMode)
+            {
+                Debug.Log($"SUCCESS: {villager.name} dealt {damage} damage to {target.name} via generic Health");
+            }
+            return damageDealt;
+        }
+        
+        // No valid health component found
+        if (debugMode)
+        {
+            Debug.LogError($"FAILED: {villager.name} could not damage {target.name} - no valid health component found!");
+        }
+        
+        return false;
     }
     
-    // Animation event support
+    // Animation event support (if you want to call these from animation events)
     public void StartDamageWindow()
     {
         EnableDamageDealing();
@@ -586,32 +325,11 @@ public class ShovelDamageDealer : MonoBehaviour
         DisableDamageDealing();
     }
     
-    // Debug context menu methods
-    [ContextMenu("Log Current State")]
-    public void LogCurrentState()
-    {
-        LogDebug($"=== CURRENT STATE ===", LogLevel.Important);
-        LogDebug($"Can Deal Damage: {canDealDamage}", LogLevel.System);
-        LogDebug($"Damage Value: {damage}", LogLevel.System);
-        LogDebug($"Villager: {(villager != null ? $"{villager.name} ({villager.GetState()})" : "NULL")}", LogLevel.System);
-        LogDebug($"Combat System: {(combatSystem != null ? combatSystem.name : "NULL")}", LogLevel.System);
-        LogDebug($"Collider: {(damageCollider != null ? $"{damageCollider.GetType().Name} (Enabled: {damageCollider.enabled}, Trigger: {damageCollider.isTrigger})" : "NULL")}", LogLevel.System);
-        LogDebug($"Damaged This Swing: {damagedThisSwing.Count}", LogLevel.System);
-        LogDebug($"=== END STATE ===", LogLevel.Important);
-    }
-    
-    [ContextMenu("Test Damage Value")]
-    public void TestDamageValue()
-    {
-        SetDamage(damage + 1);
-        SetDamage(damage - 1);
-    }
-    
     private void OnDrawGizmos()
     {
         if (!debugMode) return;
         
-        // Show damage state with color
+        // Show damage state
         if (canDealDamage)
         {
             Gizmos.color = Color.red;
@@ -630,7 +348,6 @@ public class ShovelDamageDealer : MonoBehaviour
             if (damageCollider is BoxCollider2D box)
             {
                 Gizmos.DrawWireCube(box.offset, box.size);
-                if (canDealDamage) Gizmos.DrawCube(box.offset, box.size * 0.1f);
             }
             else if (damageCollider is CircleCollider2D circle)
             {
@@ -644,28 +361,16 @@ public class ShovelDamageDealer : MonoBehaviour
                     Gizmos.DrawLine(prevPoint, point);
                     prevPoint = point;
                 }
-                if (canDealDamage) Gizmos.DrawWireSphere((Vector3)circle.offset, circle.radius * 0.1f);
             }
             
             Gizmos.matrix = oldMatrix;
         }
         
-        // Draw damage value as text
-        if (Application.isPlaying)
+        // Draw hit effect spawn position preview
+        if (hitEffectPrefab != null && Application.isPlaying && canDealDamage)
         {
-            Vector3 textPos = transform.position + Vector3.up * 0.5f;
-            Gizmos.color = canDealDamage ? Color.red : Color.gray;
-            Gizmos.DrawWireSphere(textPos, 0.1f);
-        }
-        
-        // Draw lines to damaged objects this swing
-        Gizmos.color = Color.yellow;
-        foreach (GameObject damaged in damagedThisSwing)
-        {
-            if (damaged != null)
-            {
-                Gizmos.DrawLine(transform.position, damaged.transform.position);
-            }
+            Gizmos.color = Color.yellow;
+            Gizmos.DrawWireSphere(transform.position + hitEffectOffset, 0.2f);
         }
     }
 }

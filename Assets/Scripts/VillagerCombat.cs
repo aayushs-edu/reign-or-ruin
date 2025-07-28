@@ -18,6 +18,10 @@ public abstract class VillagerCombat : MonoBehaviour
     [Header("Combat Efficiency")]
     [SerializeField] protected float combatEfficiency = 1f; // 1 = full efficiency, 0.5 = half
     
+    [Header("Rebel Combat")]
+    [SerializeField] protected float rebelDamageMultiplier = 1.5f;
+    [SerializeField] protected float rebelCooldownMultiplier = 0.8f; // Rebels
+    
     [Header("Debug")]
     [SerializeField] protected bool debugTargeting = false;
     
@@ -320,8 +324,8 @@ public abstract class VillagerCombat : MonoBehaviour
         // Apply rebel bonus
         if (villager.GetState() == VillagerState.Rebel)
         {
-            currentDamage = Mathf.RoundToInt(currentDamage * 1.5f);
-            currentAttackCooldown *= 0.8f;
+            currentDamage = Mathf.RoundToInt(currentDamage * rebelDamageMultiplier);
+            currentAttackCooldown *= rebelCooldownMultiplier;
         }
     }
     
