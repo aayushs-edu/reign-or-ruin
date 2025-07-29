@@ -739,11 +739,10 @@ public class ThrowableWeaponSystem : MonoBehaviour
             PlaySound(hitSound);
             hitSomething = true;
             
-            Debug.Log($"WARNING: Weapon hit villager {hitCollider.name} for {damage} damage! (Friendly Fire)");
+            Debug.Log($"Weapon hit villager {hitCollider.name} for {damage} damage! Starting return.");
             
-            // Weapon continues through villagers with reduced speed
-            currentSpeed *= 0.7f;
-            velocity = velocity.normalized * currentSpeed;
+            // All villagers (including rebels) should trigger weapon return
+            StartReturn();
             return;
         }
         

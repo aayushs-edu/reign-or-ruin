@@ -264,8 +264,8 @@ public class Villager : MonoBehaviour
                 break;
 
             case VillagerRole.Captain:
-                // combatComponent = gameObject.AddComponent<CaptainCombat>();
-                Debug.Log($"CaptainCombat not yet implemented for {gameObject.name}");
+                combatComponent = gameObject.AddComponent<CaptainCombat>();
+                Debug.Log($"Added CaptainCombat to {gameObject.name}");
                 break;
 
             case VillagerRole.Mage:
