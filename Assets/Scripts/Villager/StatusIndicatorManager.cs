@@ -77,8 +77,6 @@ public class StatusIndicatorManager : MonoBehaviour
             {
                 powerTierIndicator.sprite = noPowerSprite;
             }
-            // Start hidden if tier 0
-            powerTierIndicator.gameObject.SetActive(false);
         }
         
         if (discontentIndicator != null)

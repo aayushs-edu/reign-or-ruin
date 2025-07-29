@@ -11,12 +11,9 @@ public class CaptainCombat : VillagerCombat
     [SerializeField] private float attackAnimationDuration = 0.4f;
     
     [Header("Sword Positioning")]
-    [SerializeField] private Vector3 swordOffset = new Vector3(0.6f, 0, 0); // Offset from center when facing right
-    [SerializeField] private float rotationSpeed = 6f;
-    [SerializeField] private bool smoothRotation = true;
     [SerializeField] private float idleRotation = 0f; // Rotation when idle (0 = upright)
     [SerializeField] private float combatReadyDistance = 20f; // Distance at which sword starts tracking
-    [SerializeField] private Vector3 swordSpriteOffset = new Vector3(0, 0.7f, 0); // Offset of sprite from pivot point
+    [SerializeField] private Vector3 swordSpriteOffset; // Offset of sprite from pivot point
     
     [Header("Captain Stats")]
     [SerializeField] private float captainDamageMultiplier = 1.5f;
@@ -60,6 +57,7 @@ public class CaptainCombat : VillagerCombat
     private Animator attackFXAnimator;
     private SwordDamageDealer swordDamageDealer;
     private SpriteRenderer villagerSprite;
+    private SpriteRenderer swordSpriteRenderer; // Cache sword sprite renderer
     private bool isFacingRight = true;
     
     // Influence system
@@ -96,9 +94,6 @@ public class CaptainCombat : VillagerCombat
         // Find sword sprite and its components
         if (swordTransform != null)
         {
-            // Apply initial offset
-            swordTransform.localPosition = swordOffset;
-            
             // Find sword sprite
             if (swordSprite == null)
             {
@@ -162,6 +157,12 @@ public class CaptainCombat : VillagerCombat
         // Get villager sprite renderer for facing direction
         villagerSprite = GetComponent<SpriteRenderer>();
         
+        // Cache sword sprite renderer for flipping
+        if (swordSprite != null)
+        {
+            swordSpriteRenderer = swordSprite.GetComponent<SpriteRenderer>();
+        }
+        
         if (swordTransform == null)
         {
             Debug.LogError($"CaptainCombat: No sword transform found on {gameObject.name}!");
@@ -193,7 +194,6 @@ public class CaptainCombat : VillagerCombat
         // Apply initial sword container position
         if (swordTransform != null)
         {
-            swordTransform.localPosition = swordOffset;
             swordTransform.rotation = Quaternion.Euler(0, 0, idleRotation);
         }
         
@@ -214,7 +214,7 @@ public class CaptainCombat : VillagerCombat
     {
         base.Update();
         
-        // Update sword rotation based on state
+        // Update sword rotation based on state (matching CommonerCombat pattern)
         if (!isAttacking && swordTransform != null)
         {
             if (currentTarget != null)
@@ -224,9 +224,6 @@ public class CaptainCombat : VillagerCombat
                 // Only rotate sword when target is within combat ready distance
                 if (distanceToTarget <= combatReadyDistance)
                 {
-                    // Handle facing direction separately (like commoner's FaceTarget)
-                    UpdateFacingDirection();
-                    // Then handle weapon rotation
                     UpdateSwordRotation();
                 }
                 else
@@ -249,6 +246,36 @@ public class CaptainCombat : VillagerCombat
             lastInfluenceUpdate = Time.time;
         }
     }
+
+    // FIXED: Combined facing and weapon rotation logic with proper sprite flipping
+    private void UpdateSwordRotation()
+    {
+        if (currentTarget == null || swordTransform == null) return;
+
+        Vector2 direction = (currentTarget.position - swordTransform.position).normalized;
+        swordTransform.right = direction;
+
+        Vector2 scale = swordTransform.localScale;
+        if (direction.x < 0) 
+        {
+            scale.y = -1;
+        }
+        else
+        {
+            scale.y = 1;
+        }
+        swordTransform.localScale = scale;
+    }
+    
+    private void ReturnToIdleRotation()
+    {
+        Quaternion targetRotation = Quaternion.Euler(0, 0, idleRotation);
+        
+        swordTransform.rotation = Quaternion.Lerp(swordTransform.rotation, targetRotation, 5 * Time.deltaTime);
+
+    }
+    
+    // REMOVED: Separate UpdateFacingDirection method - now handled in UpdateSwordRotation
     
     private void SetupAoEVisualSystem()
     {
@@ -525,85 +552,6 @@ public class CaptainCombat : VillagerCombat
         }
     }
     
-    private void UpdateFacingDirection()
-    {
-        if (currentTarget == null) return;
-        
-        Vector3 direction = (currentTarget.position - transform.position).normalized;
-        direction.z = 0; // Keep 2D
-        
-        // Update sprite facing
-        bool shouldFaceRight = direction.x > 0;
-        
-        if (shouldFaceRight != isFacingRight)
-        {
-            isFacingRight = shouldFaceRight;
-            
-            // Flip villager sprite
-            if (villagerSprite != null)
-            {
-                villagerSprite.flipX = !isFacingRight;
-            }
-            
-            // Flip sword position horizontally
-            Vector3 newPosition = swordOffset;
-            if (!isFacingRight)
-            {
-                newPosition.x = -Mathf.Abs(swordOffset.x);
-            }
-            else
-            {
-                newPosition.x = Mathf.Abs(swordOffset.x);
-            }
-            swordTransform.localPosition = newPosition;
-        }
-    }
-    
-    private void UpdateSwordRotation()
-    {
-        if (currentTarget == null || swordTransform == null) return;
-        
-        // Handle weapon rotation (exactly like commoner's UpdateShovelRotation)
-        Vector3 directionToTarget = (currentTarget.position - swordTransform.position).normalized;
-        float angle = Mathf.Atan2(directionToTarget.y, directionToTarget.x) * Mathf.Rad2Deg;
-
-        // Adjust for sword sprite offset - we want the tip to point at target
-        // This compensates for the sprite being offset from the pivot
-        float offsetAngle = Mathf.Atan2(swordSpriteOffset.y, swordSpriteOffset.x) * Mathf.Rad2Deg;
-        angle -= offsetAngle;
-
-        // Adjust angle based on facing direction
-        if (!isFacingRight)
-        {
-            angle = angle - 180f;
-        }
-
-        Quaternion targetRotation = Quaternion.Euler(0, 0, angle);
-
-        if (smoothRotation)
-        {
-            swordTransform.rotation = Quaternion.Lerp(swordTransform.rotation, targetRotation, rotationSpeed * Time.deltaTime);
-        }
-        else
-        {
-            swordTransform.rotation = targetRotation;
-        }
-    }
-    
-    private void ReturnToIdleRotation()
-    {
-        Quaternion targetRotation = Quaternion.Euler(0, 0, idleRotation);
-        
-        if (smoothRotation)
-        {
-            swordTransform.rotation = Quaternion.Lerp(swordTransform.rotation, targetRotation, rotationSpeed * Time.deltaTime);
-        }
-        else
-        {
-            swordTransform.rotation = targetRotation;
-        }
-    }
-    
     protected override IEnumerator PerformAttack()
     {
         if (debugCombat)
@@ -613,18 +561,6 @@ public class CaptainCombat : VillagerCombat
         
         isAttacking = true;
         lastAttackTime = Time.time;
-        
-        // Face the target
-        FaceTarget();
-        
-        // Final rotation update to ensure we're facing the target
-        if (currentTarget != null && swordTransform != null)
-        {
-            Vector3 directionToTarget = (currentTarget.position - transform.position).normalized;
-            float angle = Mathf.Atan2(directionToTarget.y, directionToTarget.x) * Mathf.Rad2Deg;
-            if (!isFacingRight) angle = angle - 180f;
-            swordTransform.rotation = Quaternion.Euler(0, 0, angle);
-        }
         
         // CRITICAL: Update damage value before enabling damage dealing
         if (swordDamageDealer != null)
@@ -641,13 +577,6 @@ public class CaptainCombat : VillagerCombat
         if (swordAnimator != null)
         {
             swordAnimator.SetTrigger("Attack");
-            
-            // Get actual animation length if possible
-            AnimatorClipInfo[] clipInfo = swordAnimator.GetCurrentAnimatorClipInfo(0);
-            if (clipInfo.Length > 0)
-            {
-                attackAnimationDuration = clipInfo[0].clip.length;
-            }
         }
         else if (debugCombat)
         {
@@ -668,20 +597,7 @@ public class CaptainCombat : VillagerCombat
         {
             Debug.LogError($"CaptainCombat: No SwordDamageDealer found on {gameObject.name}!");
         }
-        
-        // Trigger attack FX animation
-        if (attackFXAnimator != null)
-        {
-            yield return new WaitForSeconds(0.1f); // Small delay for FX
-            attackFXAnimator.SetTrigger("Play");
-        }
-        
-        // Trigger main character attack animation if exists
-        if (animator != null)
-        {
-            animator.SetTrigger("Attack");
-        }
-        
+
         // Wait for animation to complete
         yield return new WaitForSeconds(attackAnimationDuration);
         
@@ -701,43 +617,6 @@ public class CaptainCombat : VillagerCombat
         if (debugCombat)
         {
             Debug.Log($"CaptainCombat: {gameObject.name} finished attack");
-        }
-    }
-    
-    private void FaceTarget()
-    {
-        if (currentTarget == null) return;
-        
-        Vector3 direction = (currentTarget.position - transform.position).normalized;
-        direction.z = 0; // Keep 2D
-        
-        // Update sprite facing
-        bool shouldFaceRight = direction.x > 0;
-        
-        if (shouldFaceRight != isFacingRight)
-        {
-            isFacingRight = shouldFaceRight;
-            
-            // Flip villager sprite
-            if (villagerSprite != null)
-            {
-                villagerSprite.flipX = !isFacingRight;
-            }
-            
-            // Flip sword position horizontally
-            if (swordTransform != null)
-            {
-                Vector3 newPosition = swordOffset;
-                if (!isFacingRight)
-                {
-                    newPosition.x = -Mathf.Abs(swordOffset.x);
-                }
-                else
-                {
-                    newPosition.x = Mathf.Abs(swordOffset.x);
-                }
-                swordTransform.localPosition = newPosition;
-            }
         }
     }
     
@@ -902,14 +781,6 @@ public class CaptainCombat : VillagerCombat
             }
         }
         
-        // Draw sword offset position
-        if (Application.isPlaying)
-        {
-            Gizmos.color = Color.yellow;
-            Gizmos.DrawWireSphere(transform.position + swordOffset, 0.1f);
-            Gizmos.DrawWireSphere(transform.position - new Vector3(swordOffset.x, -swordOffset.y, swordOffset.z), 0.1f);
-        }
-        
         // Draw combat ready distance
         Gizmos.color = Color.green;
         Gizmos.DrawWireSphere(transform.position, combatReadyDistance);
@@ -937,39 +808,6 @@ public class CaptainCombat : VillagerCombat
                     Gizmos.DrawLine(transform.position, commoner.transform.position);
                 }
             }
-        }
-    }
-    
-    // Public method to update sword offset at runtime
-    public void SetSwordOffset(Vector3 newOffset)
-    {
-        swordOffset = newOffset;
-        UpdateSwordPosition();
-    }
-    
-    // Update sword position based on current facing direction
-    private void UpdateSwordPosition()
-    {
-        if (swordTransform == null) return;
-        
-        Vector3 newPosition = swordOffset;
-        if (!isFacingRight)
-        {
-            newPosition.x = -Mathf.Abs(swordOffset.x);
-        }
-        else
-        {
-            newPosition.x = Mathf.Abs(swordOffset.x);
-        }
-        swordTransform.localPosition = newPosition;
-    }
-    
-    // Called in Unity Editor when values change
-    private void OnValidate()
-    {
-        if (Application.isPlaying && swordTransform != null)
-        {
-            UpdateSwordPosition();
         }
     }
     
