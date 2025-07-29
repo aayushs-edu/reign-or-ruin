@@ -3,7 +3,15 @@ guid: 0d461e5732cb05c44a52ab967403f3a3
 MonoImporter:
   externalObjects: {}
   serializedVersion: 2
-  defaultReferences: []
+  defaultReferences:
+  - buildingTransform: {instanceID: 0}
+  - spriteRenderer: {instanceID: 0}
+  - statsUI: {instanceID: 0}
+  - loyalSprite: {instanceID: 0}
+  - rebelSprite: {instanceID: 0}
+  - angrySprite: {instanceID: 0}
+  - selectedSprite: {instanceID: 0}
+  - settings: {fileID: 11400000, guid: bd291e3e107407b4db0b9b51f8cd35f6, type: 2}
   executionOrder: 0
   icon: {instanceID: 0}
   userData: 

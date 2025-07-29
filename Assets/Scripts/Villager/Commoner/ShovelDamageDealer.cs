@@ -13,7 +13,6 @@ public class ShovelDamageDealer : MonoBehaviour
     [Header("Hit Effect")]
     [SerializeField] private GameObject hitEffectPrefab;
     [SerializeField] private Vector3 hitEffectOffset = Vector3.zero;
-    [SerializeField] private bool parentEffectToTarget = false;
     [SerializeField] private float effectAutoDestroyTime = 2f; // Fallback if can't get animation length
     
     [Header("Debug")]
@@ -52,27 +51,6 @@ public class ShovelDamageDealer : MonoBehaviour
         damage = newDamage;
     }
     
-    public void EnableDamageDealing()
-    {
-        canDealDamage = true;
-        damagedThisSwing.Clear();
-        
-        if (debugMode)
-        {
-            Debug.Log($"ShovelDamageDealer: Damage dealing enabled for {transform.root.name}");
-        }
-    }
-
-    public void DisableDamageDealing()
-    {
-        canDealDamage = false;
-
-        if (debugMode)
-        {
-            Debug.Log($"ShovelDamageDealer: Damage dealing disabled for {transform.root.name}");
-        }
-    }
-    
     private void OnTriggerEnter2D(Collider2D other)
     {
         if (debugMode)
@@ -80,7 +58,8 @@ public class ShovelDamageDealer : MonoBehaviour
             Debug.Log($"ShovelDamageDealer: {transform.root.name} triggered with {other.gameObject.name} (Tag: {other.tag})");
         }
         
-        if (!canDealDamage) return;
+        if (!combatSystem.IsAttacking()) return;
+        else damagedThisSwing.Clear();
         
         // Skip if we've already damaged this target this swing
         if (onlyDamageOnce && damagedThisSwing.Contains(other.gameObject)) return;
@@ -98,12 +77,6 @@ public class ShovelDamageDealer : MonoBehaviour
 
             // Spawn hit effect at impact point
             SpawnHitEffect(other);
-
-            // Notify combat system
-            if (combatSystem != null)
-            {
-                combatSystem.OnShovelHitEnemy(other.gameObject, damage);
-            }
         }
     }
     
@@ -123,74 +96,11 @@ public class ShovelDamageDealer : MonoBehaviour
         
         // Instantiate effect
         GameObject effect = Instantiate(hitEffectPrefab, spawnPosition, Quaternion.identity);
-        
-        // Parent to target if desired (useful for effects that should follow the target)
-        if (parentEffectToTarget)
-        {
-            effect.transform.SetParent(hitTarget.transform);
-            effect.transform.localPosition = hitEffectOffset;
-        }
-        
-        // Get animator and calculate destroy time
-        Animator effectAnimator = effect.GetComponent<Animator>();
-        if (effectAnimator != null)
-        {
-            StartCoroutine(DestroyEffectAfterAnimation(effect, effectAnimator));
-        }
-        else
-        {
-            // No animator, use fallback destroy time
-            Destroy(effect, effectAutoDestroyTime);
-            
-            if (debugMode)
-            {
-                Debug.LogWarning($"Hit effect has no Animator, using fallback destroy time of {effectAutoDestroyTime}s");
-            }
-        }
+        Destroy(effect, effectAutoDestroyTime);
         
         if (debugMode)
         {
             Debug.Log($"Spawned hit effect at {spawnPosition} for hit on {hitTarget.name}");
-        }
-    }
-    
-    private IEnumerator DestroyEffectAfterAnimation(GameObject effect, Animator animator)
-    {
-        // Wait a frame for animator to start
-        yield return null;
-        
-        // Get current animation info
-        AnimatorStateInfo stateInfo = animator.GetCurrentAnimatorStateInfo(0);
-        float animationLength = stateInfo.length;
-        
-        // If we can't get animation length, try from clip
-        if (animationLength <= 0)
-        {
-            AnimatorClipInfo[] clipInfo = animator.GetCurrentAnimatorClipInfo(0);
-            if (clipInfo.Length > 0)
-            {
-                animationLength = clipInfo[0].clip.length;
-            }
-        }
-        
-        // Use fallback if still no length
-        if (animationLength <= 0)
-        {
-            animationLength = effectAutoDestroyTime;
-            
-            if (debugMode)
-            {
-                Debug.LogWarning($"Could not get animation length for hit effect, using fallback: {effectAutoDestroyTime}s");
-            }
-        }
-        
-        // Wait for animation to complete
-        yield return new WaitForSeconds(animationLength);
-        
-        // Destroy the effect
-        if (effect != null)
-        {
-            Destroy(effect);
         }
     }
     
@@ -312,17 +222,6 @@ public class ShovelDamageDealer : MonoBehaviour
         }
         
         return false;
-    }
-    
-    // Animation event support (if you want to call these from animation events)
-    public void StartDamageWindow()
-    {
-        EnableDamageDealing();
-    }
-    
-    public void EndDamageWindow()
-    {
-        DisableDamageDealing();
     }
     
     private void OnDrawGizmos()

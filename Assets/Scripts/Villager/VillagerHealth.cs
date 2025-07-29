@@ -9,7 +9,8 @@ public class VillagerHealth : Health
     [SerializeField] private float rebelHealthMultiplier = 1.5f;
     [SerializeField] private float witnessDeathRadius = 5f;
     [SerializeField] private bool useOrbSystem = true; // Use new orb system vs old direct power addition
-    
+
+
     private bool isRebel = false;
     private VillagerAI villagerAI;
     private Villager villagerComponent;
@@ -33,22 +34,23 @@ public class VillagerHealth : Health
         if (villagerComponent == null) return;
         
         VillagerRole role = villagerComponent.GetRole();
+        Settings settings = villagerComponent.settings;
         switch (role)
         {
             case VillagerRole.Captain:
-                maxHealth = 150;
+                maxHealth = settings.captainHealth;
                 break;
             case VillagerRole.Farmer:
-                maxHealth = 80;
+                maxHealth = settings.farmerHealth;
                 break;
             case VillagerRole.Mage:
-                maxHealth = 70;
+                maxHealth = settings.mageHealth;
                 break;
             case VillagerRole.Builder:
-                maxHealth = 120;
+                maxHealth = settings.builderHealth;
                 break;
             case VillagerRole.Commoner:
-                maxHealth = 100;
+                maxHealth = settings.commonerHealth;
                 break;
         }
         

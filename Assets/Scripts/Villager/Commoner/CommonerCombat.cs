@@ -10,12 +10,9 @@ public class CommonerCombat : VillagerCombat
     [SerializeField] private float attackAnimationDuration = 0.5f;
     
     [Header("Shovel Positioning")]
-    [SerializeField] private Vector3 shovelOffset = new Vector3(0.5f, 0, 0); // Offset from center when facing right
-    [SerializeField] private float rotationSpeed = 5f;
-    [SerializeField] private bool smoothRotation = true;
     [SerializeField] private float idleRotation = 0f; // Rotation when idle (0 = upright)
     [SerializeField] private float combatReadyDistance = 10f; // Distance at which shovel starts tracking
-    [SerializeField] private Vector3 shovelSpriteOffset = new Vector3(0, 0.5f, 0); // Offset of sprite from pivot point
+    [SerializeField] private Vector3 shovelSpriteOffset; // Offset of sprite from pivot point
     
     [Header("Captain Influence")]
     [SerializeField] private bool showInfluenceIndicator = true;
@@ -70,9 +67,6 @@ public class CommonerCombat : VillagerCombat
         // Find shovel sprite and its components
         if (shovelTransform != null)
         {
-            // Apply initial offset
-            shovelTransform.localPosition = shovelOffset;
-
             // Find shovel sprite
             if (shovelSprite == null)
             {
@@ -132,14 +126,6 @@ public class CommonerCombat : VillagerCombat
         {
             attackFXAnimator = attackFXObject.GetComponent<Animator>();
         }
-
-        // Get villager sprite renderer for facing direction
-        villagerSprite = GetComponent<SpriteRenderer>();
-
-        if (shovelTransform == null)
-        {
-            Debug.LogError($"CommonerCombat: No shovel transform found on {gameObject.name}!");
-        }
     }
     
     protected override void Start()
@@ -168,7 +154,6 @@ public class CommonerCombat : VillagerCombat
         // Apply initial shovel container position
         if (shovelTransform != null)
         {
-            shovelTransform.localPosition = shovelOffset;
             shovelTransform.rotation = Quaternion.Euler(0, 0, idleRotation);
         }
         
@@ -341,45 +326,28 @@ public class CommonerCombat : VillagerCombat
     
     private void UpdateShovelRotation()
     {
-        // Calculate direction from shovel container to target
-        Vector3 directionToTarget = (currentTarget.position - shovelTransform.position).normalized;
-        float angle = Mathf.Atan2(directionToTarget.y, directionToTarget.x) * Mathf.Rad2Deg;
+        if (currentTarget == null || shovelTransform == null) return;
 
-        // Adjust for shovel sprite offset - we want the tip to point at target
-        // This compensates for the sprite being offset from the pivot
-        float offsetAngle = Mathf.Atan2(shovelSpriteOffset.y, shovelSpriteOffset.x) * Mathf.Rad2Deg;
-        angle -= offsetAngle;
+        Vector2 direction = (currentTarget.position - shovelTransform.position).normalized;
+        shovelTransform.right = direction;
 
-        // Adjust angle based on facing direction
-        if (!isFacingRight)
+        Vector2 scale = shovelTransform.localScale;
+        if (direction.x < 0) 
         {
-            angle = angle - 180f;
-        }
-
-        Quaternion targetRotation = Quaternion.Euler(0, 0, angle);
-
-        if (smoothRotation)
-        {
-            shovelTransform.rotation = Quaternion.Lerp(shovelTransform.rotation, targetRotation, rotationSpeed * Time.deltaTime);
+            scale.y = -1;
         }
         else
         {
-            shovelTransform.rotation = targetRotation;
+            scale.y = 1;
         }
+        shovelTransform.localScale = scale;
     }
     
     private void ReturnToIdleRotation()
     {
+        shovelTransform.localScale = Vector3.one;
         Quaternion targetRotation = Quaternion.Euler(0, 0, idleRotation);
-        
-        if (smoothRotation)
-        {
-            shovelTransform.rotation = Quaternion.Lerp(shovelTransform.rotation, targetRotation, rotationSpeed * Time.deltaTime);
-        }
-        else
-        {
-            shovelTransform.rotation = targetRotation;
-        }
+        shovelTransform.rotation = Quaternion.Lerp(shovelTransform.rotation, targetRotation, 5 * Time.deltaTime);
     }
     
     protected override IEnumerator PerformAttack()
@@ -391,29 +359,6 @@ public class CommonerCombat : VillagerCombat
         
         isAttacking = true;
         lastAttackTime = Time.time;
-        
-        // Face the target
-        FaceTarget();
-        
-        // Final rotation update to ensure we're facing the target
-        if (currentTarget != null && shovelTransform != null)
-        {
-            Vector3 directionToTarget = (currentTarget.position - transform.position).normalized;
-            float angle = Mathf.Atan2(directionToTarget.y, directionToTarget.x) * Mathf.Rad2Deg;
-            if (!isFacingRight) angle = angle - 180f;
-            shovelTransform.rotation = Quaternion.Euler(0, 0, angle);
-        }
-        
-        // CRITICAL: Update damage value before enabling damage dealing
-        if (shovelDamageDealer != null)
-        {
-            shovelDamageDealer.SetDamage(currentDamage);
-            
-            if (debugCombat)
-            {
-                Debug.Log($"CommonerCombat: Set shovel damage to {currentDamage} for {gameObject.name}");
-            }
-        }
         
         // Trigger shovel attack animation FIRST
         if (shovelAnimator != null)
@@ -432,21 +377,6 @@ public class CommonerCombat : VillagerCombat
             Debug.LogWarning($"CommonerCombat: No shovel animator found on {gameObject.name}!");
         }
         
-        // CRITICAL: Enable damage dealing AFTER setting damage value
-        if (shovelDamageDealer != null)
-        {
-            shovelDamageDealer.EnableDamageDealing();
-            
-            if (debugCombat)
-            {
-                Debug.Log($"CommonerCombat: Enabled damage dealing for {gameObject.name} with {currentDamage} damage");
-            }
-        }
-        else
-        {
-            Debug.LogError($"CommonerCombat: No ShovelDamageDealer found on {gameObject.name}!");
-        }
-        
         // Trigger attack FX animation
         if (attackFXAnimator != null)
         {
@@ -454,25 +384,8 @@ public class CommonerCombat : VillagerCombat
             attackFXAnimator.SetTrigger("Play");
         }
         
-        // Trigger main character attack animation if exists
-        if (animator != null)
-        {
-            animator.SetTrigger("Attack");
-        }
-        
         // Wait for animation to complete
         yield return new WaitForSeconds(attackAnimationDuration);
-        
-        // CRITICAL: Disable damage dealing after attack
-        if (shovelDamageDealer != null)
-        {
-            shovelDamageDealer.DisableDamageDealing();
-            
-            if (debugCombat)
-            {
-                Debug.Log($"CommonerCombat: Disabled damage dealing for {gameObject.name}");
-            }
-        }
         
         isAttacking = false;
         
@@ -480,56 +393,6 @@ public class CommonerCombat : VillagerCombat
         {
             Debug.Log($"CommonerCombat: {gameObject.name} finished attack");
         }
-    }
-    
-    private void FaceTarget()
-    {
-        if (currentTarget == null) return;
-        
-        Vector3 direction = (currentTarget.position - transform.position).normalized;
-        direction.z = 0; // Keep 2D
-        
-        // Update sprite facing
-        bool shouldFaceRight = direction.x > 0;
-        
-        if (shouldFaceRight != isFacingRight)
-        {
-            isFacingRight = shouldFaceRight;
-            
-            // Flip villager sprite
-            if (villagerSprite != null)
-            {
-                villagerSprite.flipX = !isFacingRight;
-            }
-            
-            // Flip shovel position horizontally
-            if (shovelTransform != null)
-            {
-                Vector3 newPosition = shovelOffset;
-                if (!isFacingRight)
-                {
-                    newPosition.x = -Mathf.Abs(shovelOffset.x);
-                }
-                else
-                {
-                    newPosition.x = Mathf.Abs(shovelOffset.x);
-                }
-                shovelTransform.localPosition = newPosition;
-            }
-        }
-    }
-    
-    public void OnShovelHitEnemy(GameObject enemy, int damageDealt)
-    {
-        // Called by ShovelDamageDealer when damage is dealt
-        OnDamageDealt?.Invoke(damageDealt);
-        
-        if (debugCombat)
-        {
-            Debug.Log($"CommonerCombat: {gameObject.name} hit {enemy.name} for {damageDealt} damage!");
-        }
-        
-        // You can add hit effects, sounds, etc. here
     }
     
     public override void UpdateCombatStats()
@@ -573,29 +436,11 @@ public class CommonerCombat : VillagerCombat
             }
         }
     }
-    
-    // IMPORTANT: Override the base DealDamage to prevent double damage
-    protected override void DealDamage()
-    {
-        // Don't call base.DealDamage() because ShovelDamageDealer handles all damage
-        // The base DealDamage would cause double damage since ShovelDamageDealer also deals damage
-        
-        if (debugCombat)
-        {
-            Debug.Log($"CommonerCombat: DealDamage called for {gameObject.name} - but ShovelDamageDealer handles damage, so doing nothing");
-        }
-    }
 
     // IMPORTANT: Ensure proper cleanup
     protected override void OnDestroy()
     {
         base.OnDestroy();
-
-        // Clean up shovel damage dealer
-        if (shovelDamageDealer != null)
-        {
-            shovelDamageDealer.DisableDamageDealing();
-        }
         
         // Clean up influence indicator
         if (influenceIndicator != null)
@@ -627,50 +472,9 @@ public class CommonerCombat : VillagerCombat
             }
         }
         
-        // Draw shovel offset position
-        if (Application.isPlaying)
-        {
-            Gizmos.color = Color.yellow;
-            Gizmos.DrawWireSphere(transform.position + shovelOffset, 0.1f);
-            Gizmos.DrawWireSphere(transform.position - new Vector3(shovelOffset.x, -shovelOffset.y, shovelOffset.z), 0.1f);
-        }
-        
         // Draw combat ready distance
         Gizmos.color = Color.green;
         Gizmos.DrawWireSphere(transform.position, combatReadyDistance);
-    }
-    
-    // Public method to update shovel offset at runtime
-    public void SetShovelOffset(Vector3 newOffset)
-    {
-        shovelOffset = newOffset;
-        UpdateShovelPosition();
-    }
-    
-    // Update shovel position based on current facing direction
-    private void UpdateShovelPosition()
-    {
-        if (shovelTransform == null) return;
-        
-        Vector3 newPosition = shovelOffset;
-        if (!isFacingRight)
-        {
-            newPosition.x = -Mathf.Abs(shovelOffset.x);
-        }
-        else
-        {
-            newPosition.x = Mathf.Abs(shovelOffset.x);
-        }
-        shovelTransform.localPosition = newPosition;
-    }
-    
-    // Called in Unity Editor when values change
-    private void OnValidate()
-    {
-        if (Application.isPlaying && shovelTransform != null)
-        {
-            UpdateShovelPosition();
-        }
     }
 
     // Public getters for debugging and UI

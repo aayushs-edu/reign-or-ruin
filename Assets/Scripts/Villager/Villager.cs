@@ -49,7 +49,7 @@ public class Villager : MonoBehaviour
     [SerializeField] private Sprite selectedSprite; // NEW: Sprite to show when hovered/selected
     
     [Header("Role Constants")]
-    [SerializeField] private DiscontentConstants discontentConstants;
+    [SerializeField] public Settings settings;
     
     [Header("Rebellion System V1")]
     [SerializeField] private float baseDiscontentRate = 1f; // Base discontent gain per second
@@ -380,9 +380,9 @@ public class Villager : MonoBehaviour
     
     public void ProcessDiscontentAtAllocation()
     {
-        if (discontentConstants == null)
+        if (settings == null)
         {
-            Debug.LogWarning("Discontent constants not assigned!");
+            Debug.LogWarning("Settings not assigned!");
             return;
         }
         
@@ -394,8 +394,8 @@ public class Villager : MonoBehaviour
         float foodShortage = Mathf.Max(0, 1f - stats.food);
         
         // Add discontent
-        float discontentIncrease = (powerShortage * discontentConstants.powerPenalty) + 
-                                  (foodShortage * discontentConstants.foodPenalty);
+        float discontentIncrease = (powerShortage * settings.powerPenalty) + 
+                                  (foodShortage * settings.foodPenalty);
         
         AddDiscontent(discontentIncrease);
         
@@ -404,13 +404,13 @@ public class Villager : MonoBehaviour
     
     public void ProcessNightlyRecovery()
     {
-        if (discontentConstants == null) return;
+        if (settings == null) return;
         
         // Recovery if well-fed and full power
         int tierCost = stats.tier * 2;
         if (stats.food >= 1f && stats.power >= tierCost)
         {
-            stats.discontent = Mathf.Max(0, stats.discontent - discontentConstants.recoveryRate);
+            stats.discontent = Mathf.Max(0, stats.discontent - settings.recoveryRate);
             OnDiscontentChanged?.Invoke(this, stats.discontent);
             UpdateVisuals();
         }
@@ -477,10 +477,10 @@ public class Villager : MonoBehaviour
     
     public void OnHitByPlayerFriendlyFire()
     {
-        if (discontentConstants != null)
+        if (settings != null)
         {
-            AddDiscontent(discontentConstants.friendlyFirePenalty);
-            Debug.Log($"{role} {gameObject.name} hit by friendly fire! +{discontentConstants.friendlyFirePenalty} discontent");
+            AddDiscontent(settings.friendlyFirePenalty);
+            Debug.Log($"{role} {gameObject.name} hit by friendly fire! +{settings.friendlyFirePenalty} discontent");
         }
     }
     
@@ -501,10 +501,10 @@ public class Villager : MonoBehaviour
     {
         stats.isActive = false;
         
-        if (discontentConstants != null)
+        if (settings != null)
         {
-            AddDiscontent(discontentConstants.buildingDestroyedPenalty);
-            Debug.Log($"{role} {gameObject.name} building destroyed! +{discontentConstants.buildingDestroyedPenalty} discontent");
+            AddDiscontent(settings.buildingDestroyedPenalty);
+            Debug.Log($"{role} {gameObject.name} building destroyed! +{settings.buildingDestroyedPenalty} discontent");
         }
         
         UpdateVisuals();

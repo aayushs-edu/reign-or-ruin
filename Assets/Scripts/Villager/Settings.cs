@@ -1,8 +1,20 @@
 using UnityEngine;
 
-[CreateAssetMenu(fileName = "DiscontentConstants", menuName = "Balance of Power/Discontent Constants")]
-public class DiscontentConstants : ScriptableObject
+[CreateAssetMenu(fileName = "Settings", menuName = "Balance of Power/Settings")]
+public class Settings : ScriptableObject
 {
+    [Header("Villager Settings")]
+    [Tooltip("Commoner Health")]
+    public int commonerHealth = 25;
+    [Tooltip("Farmer Health")]
+    public int farmerHealth = 50;
+    [Tooltip("Builder Health")]
+    public int builderHealth = 75;
+    [Tooltip("Mage Health")]
+    public int mageHealth = 100;
+    [Tooltip("Captain Health")]
+    public int captainHealth = 150;
+
     [Header("Discontent Penalties")]
     [Tooltip("Discontent added per point of power shortage")]
     public float powerPenalty = 5f;

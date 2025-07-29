@@ -6,7 +6,7 @@ public class VillageManager : MonoBehaviour
 {
     [Header("Village Configuration")]
     [SerializeField] private List<Villager> villagers = new List<Villager>();
-    [SerializeField] private DiscontentConstants discontentConstants;
+    [SerializeField] private Settings settings;
     [SerializeField] private int totalFoodProduction = 8; // Base food production
     
     [Header("Power Allocation")]
@@ -74,7 +74,7 @@ public class VillageManager : MonoBehaviour
         foreach (var villager in villagers)
         {
             // Assign discontent constants through reflection or public setter
-            // villager.SetDiscontentConstants(discontentConstants);
+            // villager.Setsettings(settings);
         }
         
         Debug.Log($"VillageManager initialized with {totalVillagers} villagers");
@@ -210,7 +210,7 @@ public class VillageManager : MonoBehaviour
     
     private void CheckCascadeRebellion(Villager triggerVillager)
     {
-        if (discontentConstants == null) return;
+        if (settings == null) return;
         
         List<Villager> newRebels = new List<Villager>();
         
@@ -221,7 +221,7 @@ public class VillageManager : MonoBehaviour
             {
                 if (villager.GetRole() == VillagerRole.Commoner && 
                     villager.IsLoyal() && 
-                    villager.GetStats().discontent >= discontentConstants.captainCascadeThreshold)
+                    villager.GetStats().discontent >= settings.captainCascadeThreshold)
                 {
                     villager.SetDiscontent(100f); // Force rebellion
                     newRebels.Add(villager);
@@ -238,13 +238,13 @@ public class VillageManager : MonoBehaviour
         int currentRebels = villagers.Count(v => v.IsRebel());
         float rebelPercent = (float)currentRebels / villagers.Count;
         
-        if (currentRebels >= discontentConstants.massRebellionMinCount || 
-            rebelPercent >= discontentConstants.massRebellionMinPercent)
+        if (currentRebels >= settings.massRebellionMinCount || 
+            rebelPercent >= settings.massRebellionMinPercent)
         {
             foreach (var villager in villagers)
             {
                 if (villager.IsLoyal() && 
-                    villager.GetStats().discontent >= discontentConstants.massRebellionThreshold)
+                    villager.GetStats().discontent >= settings.massRebellionThreshold)
                 {
                     villager.SetDiscontent(100f); // Force rebellion
                     newRebels.Add(villager);

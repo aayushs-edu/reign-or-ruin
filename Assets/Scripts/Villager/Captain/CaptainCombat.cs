@@ -9,17 +9,11 @@ public class CaptainCombat : VillagerCombat
     [SerializeField] private GameObject swordSprite;
     [SerializeField] private GameObject attackFXObject;
     [SerializeField] private float attackAnimationDuration = 0.4f;
-    
+
     [Header("Sword Positioning")]
     [SerializeField] private float idleRotation = 0f; // Rotation when idle (0 = upright)
     [SerializeField] private float combatReadyDistance = 20f; // Distance at which sword starts tracking
     [SerializeField] private Vector3 swordSpriteOffset; // Offset of sprite from pivot point
-    
-    [Header("Captain Stats")]
-    [SerializeField] private float captainDamageMultiplier = 1.5f;
-    [SerializeField] private float captainHealthMultiplier = 1.8f;
-    [SerializeField] private float captainCooldownMultiplier = 0.7f; // Faster attacks
-    [SerializeField] private float captainRangeMultiplier = 1.3f;
     
     [Header("Influence System")]
     [SerializeField] private float baseInfluenceRadius = 8f;
@@ -54,11 +48,7 @@ public class CaptainCombat : VillagerCombat
     
     // Cached components
     private Animator swordAnimator;
-    private Animator attackFXAnimator;
     private SwordDamageDealer swordDamageDealer;
-    private SpriteRenderer villagerSprite;
-    private SpriteRenderer swordSpriteRenderer; // Cache sword sprite renderer
-    private bool isFacingRight = true;
     
     // Influence system
     private List<CommonerCombat> influencedCommoners = new List<CommonerCombat>();
@@ -148,21 +138,6 @@ public class CaptainCombat : VillagerCombat
             }
         }
         
-        // Get FX animator if exists
-        if (attackFXObject != null)
-        {
-            attackFXAnimator = attackFXObject.GetComponent<Animator>();
-        }
-        
-        // Get villager sprite renderer for facing direction
-        villagerSprite = GetComponent<SpriteRenderer>();
-        
-        // Cache sword sprite renderer for flipping
-        if (swordSprite != null)
-        {
-            swordSpriteRenderer = swordSprite.GetComponent<SpriteRenderer>();
-        }
-        
         if (swordTransform == null)
         {
             Debug.LogError($"CaptainCombat: No sword transform found on {gameObject.name}!");
@@ -213,14 +188,14 @@ public class CaptainCombat : VillagerCombat
     protected override void Update()
     {
         base.Update();
-        
+
         // Update sword rotation based on state (matching CommonerCombat pattern)
         if (!isAttacking && swordTransform != null)
         {
             if (currentTarget != null)
             {
                 float distanceToTarget = Vector3.Distance(transform.position, currentTarget.position);
-                
+
                 // Only rotate sword when target is within combat ready distance
                 if (distanceToTarget <= combatReadyDistance)
                 {
@@ -238,7 +213,7 @@ public class CaptainCombat : VillagerCombat
                 ReturnToIdleRotation();
             }
         }
-        
+
         // Update influence system periodically
         if (Time.time - lastInfluenceUpdate >= influenceUpdateRate)
         {
@@ -269,14 +244,46 @@ public class CaptainCombat : VillagerCombat
     
     private void ReturnToIdleRotation()
     {
+        swordTransform.localScale = Vector3.one;
         Quaternion targetRotation = Quaternion.Euler(0, 0, idleRotation);
-        
         swordTransform.rotation = Quaternion.Lerp(swordTransform.rotation, targetRotation, 5 * Time.deltaTime);
-
     }
     
-    // REMOVED: Separate UpdateFacingDirection method - now handled in UpdateSwordRotation
+
     
+    // CRITICAL FIX: Proper attack timing with damage window
+    protected override IEnumerator PerformAttack()
+    {
+        if (debugCombat)
+        {
+            Debug.Log($"CaptainCombat: {gameObject.name} starting attack on {currentTarget?.name}");
+        }
+
+        isAttacking = true;
+        lastAttackTime = Time.time;
+
+        // Trigger sword attack animation FIRST
+        if (swordAnimator != null)
+        {
+            swordAnimator.SetTrigger("Attack");
+        }
+        else if (debugCombat)
+        {
+            Debug.LogWarning($"CaptainCombat: No sword animator found on {gameObject.name}!");
+        }
+
+        // Wait for animation to complete
+        yield return new WaitForSeconds(attackAnimationDuration);
+
+        isAttacking = false;
+
+        if (debugCombat)
+        {
+            Debug.Log($"CaptainCombat: {gameObject.name} finished attack");
+        }
+    }
+    
+    // Rest of the influence system methods remain the same...
     private void SetupAoEVisualSystem()
     {
         // Auto-find AoE components if enabled
@@ -552,150 +559,10 @@ public class CaptainCombat : VillagerCombat
         }
     }
     
-    protected override IEnumerator PerformAttack()
-    {
-        if (debugCombat)
-        {
-            Debug.Log($"CaptainCombat: {gameObject.name} starting attack on {currentTarget?.name}");
-        }
-        
-        isAttacking = true;
-        lastAttackTime = Time.time;
-        
-        // CRITICAL: Update damage value before enabling damage dealing
-        if (swordDamageDealer != null)
-        {
-            swordDamageDealer.SetDamage(currentDamage);
-            
-            if (debugCombat)
-            {
-                Debug.Log($"CaptainCombat: Set sword damage to {currentDamage} for {gameObject.name}");
-            }
-        }
-        
-        // Trigger sword attack animation FIRST
-        if (swordAnimator != null)
-        {
-            swordAnimator.SetTrigger("Attack");
-        }
-        else if (debugCombat)
-        {
-            Debug.LogWarning($"CaptainCombat: No sword animator found on {gameObject.name}!");
-        }
-        
-        // CRITICAL: Enable damage dealing AFTER setting damage value
-        if (swordDamageDealer != null)
-        {
-            swordDamageDealer.EnableDamageDealing();
-            
-            if (debugCombat)
-            {
-                Debug.Log($"CaptainCombat: Enabled damage dealing for {gameObject.name} with {currentDamage} damage");
-            }
-        }
-        else
-        {
-            Debug.LogError($"CaptainCombat: No SwordDamageDealer found on {gameObject.name}!");
-        }
-
-        // Wait for animation to complete
-        yield return new WaitForSeconds(attackAnimationDuration);
-        
-        // CRITICAL: Disable damage dealing after attack
-        if (swordDamageDealer != null)
-        {
-            swordDamageDealer.DisableDamageDealing();
-            
-            if (debugCombat)
-            {
-                Debug.Log($"CaptainCombat: Disabled damage dealing for {gameObject.name}");
-            }
-        }
-        
-        isAttacking = false;
-        
-        if (debugCombat)
-        {
-            Debug.Log($"CaptainCombat: {gameObject.name} finished attack");
-        }
-    }
-    
-    public void OnSwordHitEnemy(GameObject enemy, int damageDealt)
-    {
-        // Called by SwordDamageDealer when damage is dealt
-        OnDamageDealt?.Invoke(damageDealt);
-        
-        if (debugCombat)
-        {
-            Debug.Log($"CaptainCombat: {gameObject.name} hit {enemy.name} for {damageDealt} damage!");
-        }
-        
-        // You can add hit effects, sounds, etc. here
-    }
-    
-    public override void UpdateCombatStats()
-    {
-        // Call base implementation first
-        base.UpdateCombatStats();
-        
-        // Apply captain multipliers
-        currentDamage = Mathf.RoundToInt(currentDamage * captainDamageMultiplier);
-        currentAttackCooldown *= captainCooldownMultiplier;
-        currentAttackRange *= captainRangeMultiplier;
-        
-        // Update damage dealer with new stats
-        if (swordDamageDealer != null)
-        {
-            swordDamageDealer.SetDamage(currentDamage);
-            
-            if (debugCombat)
-            {
-                Debug.Log($"CaptainCombat: Updated {gameObject.name} damage to {currentDamage}");
-            }
-        }
-        
-        // Update villager health based on captain multiplier
-        VillagerHealth health = GetComponent<VillagerHealth>();
-        if (health != null && villager != null)
-        {
-            VillagerStats stats = villager.GetStats();
-            // Apply captain health multiplier when updating for tier
-            int baseHealth = GetBaseHealthForRole();
-            int newMaxHealth = Mathf.RoundToInt(baseHealth * (1f + stats.tier * 0.2f) * captainHealthMultiplier);
-            health.SetMaxHealth(newMaxHealth, false);
-        }
-        
-        // Update influence system since tier might have changed
-        UpdateInfluenceSystem();
-    }
-    
-    private int GetBaseHealthForRole()
-    {
-        return 150; // Captain base health (defined in VillagerHealth)
-    }
-    
-    // IMPORTANT: Override the base DealDamage to prevent double damage
-    protected override void DealDamage()
-    {
-        // Don't call base.DealDamage() because SwordDamageDealer handles all damage
-        // The base DealDamage would cause double damage since SwordDamageDealer also deals damage
-        
-        if (debugCombat)
-        {
-            Debug.Log($"CaptainCombat: DealDamage called for {gameObject.name} - but SwordDamageDealer handles damage, so doing nothing");
-        }
-    }
-    
     // IMPORTANT: Ensure proper cleanup
     protected override void OnDestroy()
     {
         base.OnDestroy();
-        
-        // Clean up sword damage dealer
-        if (swordDamageDealer != null)
-        {
-            swordDamageDealer.DisableDamageDealing();
-        }
         
         // Remove influence from all commoners
         foreach (var commoner in influencedCommoners.ToArray())
@@ -761,17 +628,17 @@ public class CaptainCombat : VillagerCombat
     protected override void OnDrawGizmosSelected()
     {
         base.OnDrawGizmosSelected();
-        
+
         // Draw sword pivot point
         if (swordTransform != null)
         {
             Gizmos.color = Color.cyan;
             Gizmos.DrawWireSphere(swordTransform.position, 0.1f);
-            
+
             // Draw line showing sword direction
             Vector3 swordDirection = swordTransform.rotation * Vector3.right;
             Gizmos.DrawRay(swordTransform.position, swordDirection * 1f);
-            
+
             // Draw sword sprite position
             if (Application.isPlaying && swordSprite != null)
             {
@@ -780,11 +647,11 @@ public class CaptainCombat : VillagerCombat
                 Gizmos.DrawLine(swordTransform.position, swordSprite.transform.position);
             }
         }
-        
+
         // Draw combat ready distance
         Gizmos.color = Color.green;
         Gizmos.DrawWireSphere(transform.position, combatReadyDistance);
-        
+
         // Draw influence radius
         Gizmos.color = influenceRangeColor;
         if (Application.isPlaying)
@@ -796,7 +663,7 @@ public class CaptainCombat : VillagerCombat
             float estimatedRadius = baseInfluenceRadius + (2 * influenceRadiusPerTier); // Estimate at tier 2
             Gizmos.DrawWireSphere(transform.position, estimatedRadius);
         }
-        
+
         // Draw lines to influenced commoners
         if (Application.isPlaying && influencedCommoners.Count > 0)
         {
@@ -809,40 +676,13 @@ public class CaptainCombat : VillagerCombat
                 }
             }
         }
-    }
-    
-    // DEBUGGING METHODS
-    [ContextMenu("Test Attack Animation")]
-    public void TestAttackAnimation()
-    {
-        if (Application.isPlaying)
+
+        // ADDED: Draw damage window visualization
+        if (Application.isPlaying && debugCombat && isAttacking)
         {
-            StartCoroutine(PerformAttack());
+            Gizmos.color = Color.red;
+            Gizmos.DrawWireSphere(transform.position, 0.3f);
         }
-    }
-    
-    [ContextMenu("Force Update Combat Stats")]
-    public void ForceUpdateCombatStats()
-    {
-        UpdateCombatStats();
-        Debug.Log($"Captain combat stats updated for {gameObject.name}: Damage={currentDamage}, Cooldown={currentAttackCooldown}, Range={currentAttackRange}, Influence={currentInfluenceRadius}");
-    }
-    
-    [ContextMenu("Force Update AoE Visuals")]
-    public void ForceUpdateAoEVisuals()
-    {
-        UpdateAoEVisualSystem();
-        Debug.Log($"Captain {gameObject.name} AoE visuals updated: Circle Scale={aoeCircle?.localScale}, Particle Radius={aoeParticles?.shape.radius}");
-    }
-    
-    [ContextMenu("Test AoE Color Change")]
-    public void TestAoEColorChange()
-    {
-        Color[] testColors = { Color.red, Color.blue, Color.yellow, Color.green, Color.magenta };
-        Color randomColor = testColors[Random.Range(0, testColors.Length)];
-        randomColor.a = 0.3f; // Set transparency
-        SetAoEColor(randomColor);
-        Debug.Log($"Captain {gameObject.name} AoE color changed to {randomColor}");
     }
     
     // Public methods for AoE visual control
@@ -889,4 +729,5 @@ public class CaptainCombat : VillagerCombat
         circleScaleOffset = offset;
         UpdateAoEVisualSystem(); // Immediately update visuals
     }
+    
 }
