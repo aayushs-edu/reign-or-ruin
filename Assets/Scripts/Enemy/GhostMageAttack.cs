@@ -32,7 +32,6 @@ public class GhostMageParticleAttack : BaseEnemyAttack
     
     // Components
     private AudioSource audioSource;
-    private Animator animator;
     private GameObject currentParticleInstance;
     private GameObject currentColliderInstance;
     private ParticleSystem currentParticleSystem;

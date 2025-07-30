@@ -138,20 +138,33 @@ public class VillageManager : MonoBehaviour
         {
             if (villager.GetRole() == VillagerRole.Farmer && villager.IsActive())
             {
-                VillagerStats stats = villager.GetStats();
-                
-                // Base production + tier bonus
-                switch (stats.tier)
+                // Get farmer combat component to calculate food production
+                FarmerCombat farmerCombat = villager.GetComponent<FarmerCombat>();
+                if (farmerCombat != null)
                 {
-                    case 0: // No power
-                        totalFood += 2; // Base production
-                        break;
-                    case 1: // Tier 1 (2 power)
-                        totalFood += 4;
-                        break;
-                    case 2: // Tier 2 (4 power)
-                        totalFood += 8;
-                        break;
+                    totalFood += farmerCombat.CalculateFoodProduction();
+                }
+                else
+                {
+                    // Fallback to default calculation if FarmerCombat component is missing
+                    VillagerStats stats = villager.GetStats();
+                    switch (stats.tier)
+                    {
+                        case 0:
+                            totalFood += settings != null ? settings.farmerBaseFoodProduction : 2;
+                            break;
+                        case 1:
+                            totalFood += settings != null ? settings.farmerTier1FoodProduction : 4;
+                            break;
+                        case 2:
+                            totalFood += settings != null ? settings.farmerTier2FoodProduction : 8;
+                            break;
+                    }
+                }
+                
+                if (debugRebellion) // Using existing debug flag
+                {
+                    Debug.Log($"Farmer {villager.name} (Tier {villager.GetStats().tier}) producing {(farmerCombat != null ? farmerCombat.CalculateFoodProduction() : "fallback")} food");
                 }
             }
         }

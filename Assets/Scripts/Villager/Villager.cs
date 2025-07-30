@@ -158,13 +158,13 @@ public class Villager : MonoBehaviour
         // Rebels cannot be selected
         if (currentState == VillagerState.Rebel && selected)
         {
-            Debug.Log($"Cannot select rebel villager {gameObject.name}");
+            // Debug.Log($"Cannot select rebel villager {gameObject.name}");
             return;
         }
         
         isSelected = selected;
         
-        Debug.Log($"Villager {gameObject.name} selection set to: {selected}");
+        // Debug.Log($"Villager {gameObject.name} selection set to: {selected}");
         
         // Immediately update the visual
         UpdateSelectionVisual();
@@ -179,7 +179,7 @@ public class Villager : MonoBehaviour
         {
             // Show selected sprite when hovering (but not for rebels)
             spriteRenderer.sprite = selectedSprite;
-            Debug.Log($"Setting selected sprite for {gameObject.name}");
+            // Debug.Log($"Setting selected sprite for {gameObject.name}");
         }
         else
         {
@@ -269,18 +269,13 @@ public class Villager : MonoBehaviour
                 break;
 
             case VillagerRole.Mage:
-                // combatComponent = gameObject.AddComponent<MageCombat>();
-                Debug.Log($"MageCombat not yet implemented for {gameObject.name}");
+                combatComponent = gameObject.AddComponent<MageCombat>();
+                Debug.Log($"Added MageCombat to {gameObject.name}");
                 break;
-
-            case VillagerRole.Builder:
-                // Builders don't have combat
-                Debug.Log($"Builders don't engage in combat: {gameObject.name}");
-                break;
-
+                
             case VillagerRole.Farmer:
-                // Farmers don't have combat
-                Debug.Log($"Farmers don't engage in combat: {gameObject.name}");
+                combatComponent = gameObject.AddComponent<FarmerCombat>();
+                Debug.Log($"Added FarmerCombat to {gameObject.name}");
                 break;
         }
     }

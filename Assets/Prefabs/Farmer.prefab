@@ -371,14 +371,14 @@ RectTransform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1156593636140183995}
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalScale: {x: 0.01, y: 0.01, z: 0.01}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1414846214154332650}
   - {fileID: 5496217371141813485}
-  m_Father: {fileID: 8377841283498311120}
+  m_Father: {fileID: 506122760181693640}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
@@ -529,6 +529,7 @@ Transform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
+  - {fileID: 1405089227656028209}
   - {fileID: 8377841283498311120}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
@@ -646,8 +647,6 @@ MonoBehaviour:
     power: 0
     food: 1
     discontent: 0
-    maxHP: 100
-    currentHP: 100
     tier: 0
     isActive: 1
   buildingTransform: {fileID: 0}
@@ -656,7 +655,16 @@ MonoBehaviour:
   loyalSprite: {fileID: 21300000, guid: 6c9c30a0cc5bb504d9edf6849355876c, type: 3}
   rebelSprite: {fileID: 21300000, guid: c37f5347090e6a543b38d1d15e5ea2f8, type: 3}
   angrySprite: {fileID: 21300000, guid: 6c9c30a0cc5bb504d9edf6849355876c, type: 3}
-  discontentConstants: {fileID: 11400000, guid: 395433a6016638045a3797984f7717bf, type: 2}
+  selectedSprite: {fileID: 0}
+  settings: {fileID: 0}
+  baseDiscontentRate: 1
+  powerDiscontentReduction: 0.5
+  lowFoodDiscontentMultiplier: 2
+  angryCombatEfficiencyMultiplier: 0.5
+  baseFoodDecayRate: 1
+  powerFoodDecayReduction: 0.3
+  lowFoodEfficiencyThreshold: 0.5
+  lowFoodEfficiencyMultiplier: 0.7
 --- !u!114 &5865167024654171421
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1980,7 +1988,6 @@ RectTransform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 5792736097731538944}
-  - {fileID: 1405089227656028209}
   m_Father: {fileID: 506122760181693640}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
@@ -2089,11 +2096,6 @@ MonoBehaviour:
   loyalStateColor: {r: 0, g: 0, b: 1, a: 1}
   angryStateColor: {r: 1, g: 0.64, b: 0, a: 1}
   rebelStateColor: {r: 1, g: 0, b: 0, a: 1}
-  healthBar: {fileID: 8135502108124375965}
-  healthText: {fileID: 2578134007520398833}
-  healthFill: {fileID: 1187024558587078574}
-  fullHealthColor: {r: 0, g: 1, b: 0, a: 1}
-  lowHealthColor: {r: 1, g: 0, b: 0, a: 1}
   addPowerButton: {fileID: 8942412942015182372}
   removePowerButton: {fileID: 1782064276097370726}
   powerPerClick: 1

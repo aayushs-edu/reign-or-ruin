@@ -43,7 +43,11 @@ public class Health : MonoBehaviour
     
     protected virtual void Awake()
     {
-        currentHealth = maxHealth;
+        // Initialize health if not already set
+        if (currentHealth <= 0)
+        {
+            currentHealth = maxHealth;
+        }
         InitializeComponents();
     }
     
@@ -112,7 +116,7 @@ public class Health : MonoBehaviour
     
     public virtual void TakeDamage(int damage)
     {
-        if (isDead) return;
+        if (isDead || damage <= 0) return;
         
         currentHealth -= damage;
         currentHealth = Mathf.Clamp(currentHealth, 0, maxHealth);
@@ -135,20 +139,21 @@ public class Health : MonoBehaviour
     
     public virtual void Heal(int amount)
     {
-        if (isDead) return;
+        if (isDead || amount <= 0) return;
         
-        int actualHeal = Mathf.Min(amount, maxHealth - currentHealth);
-        currentHealth += actualHeal;
+        int oldHealth = currentHealth;
+        currentHealth = Mathf.Min(maxHealth, currentHealth + amount);
+        int actualHeal = currentHealth - oldHealth;
         
-        OnHealed?.Invoke(actualHeal);
-        OnHealthChanged?.Invoke(currentHealth);
-        
-        UpdateHealthBar();
-        
-        // Visual and audio feedback
         if (actualHeal > 0)
         {
-            OnHealReceived();
+            OnHealed?.Invoke(actualHeal);
+            OnHealthChanged?.Invoke(currentHealth);
+            
+            UpdateHealthBar();
+            
+            // Visual and audio feedback
+            OnHealReceived(actualHeal);
         }
     }
     
@@ -167,7 +172,7 @@ public class Health : MonoBehaviour
         }
     }
     
-    protected virtual void OnHealReceived()
+    protected virtual void OnHealReceived(int healAmount)
     {
         // Flash effect
         if (useFlashEffect && spriteRenderer != null && !isFlashing)
@@ -306,6 +311,24 @@ public class Health : MonoBehaviour
             healthBar.SetMaxHealth(maxHealth);
         }
         UpdateHealthBar();
+        OnHealthChanged?.Invoke(currentHealth);
+    }
+    
+    public void SetCurrentHealth(int health)
+    {
+        currentHealth = Mathf.Clamp(health, 0, maxHealth);
+        OnHealthChanged?.Invoke(currentHealth);
+        UpdateHealthBar();
+        
+        if (currentHealth <= 0 && !isDead)
+        {
+            Die();
+        }
+    }
+    
+    public void FullHeal()
+    {
+        Heal(maxHealth - currentHealth);
     }
     
     public void Revive(int healthAmount = -1)

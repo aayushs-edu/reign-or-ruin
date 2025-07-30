@@ -234,11 +234,21 @@ public class VillagerAI : MonoBehaviour
     
     private void UpdateNormalBehavior()
     {
-        // Priority 1: Combat target
+        // Priority 1: Combat target - but mages flee instead of approach
         if (combatTarget != null)
         {
-            currentState = AIState.MovingToTarget;
-            MoveToTarget(combatTarget);
+            // Check if this is a mage - mages flee from combat targets
+            Villager villagerComponent = GetComponent<Villager>();
+            if (villagerComponent != null && villagerComponent.GetRole() == VillagerRole.Mage)
+            {
+                currentState = AIState.Fleeing;
+                FleeFrom(combatTarget); // Flee instead of approach
+            }
+            else
+            {
+                currentState = AIState.MovingToTarget;
+                MoveToTarget(combatTarget); // Normal combat behavior
+            }
             return;
         }
         

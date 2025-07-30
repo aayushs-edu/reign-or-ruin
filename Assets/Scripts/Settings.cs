@@ -14,6 +14,16 @@ public class Settings : ScriptableObject
     public int mageHealth = 100;
     [Tooltip("Captain Health")]
     public int captainHealth = 150;
+    
+    [Header("Farmer Food Production")]
+    [Tooltip("Base food production per farmer (Tier 0)")]
+    public int farmerBaseFoodProduction = 2;
+    
+    [Tooltip("Food production per farmer at Tier 1 (2 power)")]
+    public int farmerTier1FoodProduction = 4;
+    
+    [Tooltip("Food production per farmer at Tier 2 (4 power)")]
+    public int farmerTier2FoodProduction = 8;
 
     [Header("Discontent Penalties")]
     [Tooltip("Discontent added per point of power shortage")]

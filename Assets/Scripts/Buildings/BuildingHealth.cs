@@ -24,12 +24,6 @@ public class BuildingHealth : Health
         UpdateBuildingSprite();
     }
     
-    protected override void OnHealReceived()
-    {
-        base.OnHealReceived();
-        UpdateBuildingSprite();
-    }
-    
     private void UpdateBuildingSprite()
     {
         if (buildingSprites == null || buildingSprites.Length == 0) return;

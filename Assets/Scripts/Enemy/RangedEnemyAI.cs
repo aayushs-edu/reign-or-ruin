@@ -206,7 +206,6 @@ public class RangedEnemyAI : MonoBehaviour
     // Public interface (compatible with EnemyAI)
     public void SetTarget(Transform newTarget) => target = newTarget;
     public void SetMoveSpeed(float newSpeed) => moveSpeed = newSpeed;
-    public void SetChaseEnabled(bool enabled) => enabled = enabled;
     public bool IsMoving() => agent != null && agent.velocity.magnitude > 0.1f;
     public float GetDistanceToTarget() => target != null ? Vector3.Distance(transform.position, target.position) : float.MaxValue;
     public Transform GetCurrentTarget() => target;

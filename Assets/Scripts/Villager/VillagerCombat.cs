@@ -1,5 +1,6 @@
 using UnityEngine;
 using System.Collections;
+using System.Collections.Generic;
 
 public abstract class VillagerCombat : MonoBehaviour
 {
@@ -38,6 +39,10 @@ public abstract class VillagerCombat : MonoBehaviour
     protected int currentDamage;
     protected float currentAttackRange;
 
+    // Mage buff system
+    protected Dictionary<MageHealingSystem, float> mageDamageBuffs = new Dictionary<MageHealingSystem, float>();
+    protected float totalMageDamageMultiplier = 1f;
+
     // Events
     public System.Action<Transform> OnTargetAcquired;
     public System.Action<int> OnDamageDealt;
@@ -74,6 +79,7 @@ public abstract class VillagerCombat : MonoBehaviour
     {
         if (!CanCombat()) return;
 
+        UpdateMageBuffs();
         UpdateTarget();
 
         if (currentTarget != null)
@@ -258,7 +264,7 @@ public abstract class VillagerCombat : MonoBehaviour
         return !isAttacking && Time.time - lastAttackTime >= effectiveCooldown;
     }
 
-    protected abstract IEnumerator PerformAttack();
+    protected abstract System.Collections.IEnumerator PerformAttack();
 
     protected virtual void DealDamage()
     {
@@ -305,6 +311,66 @@ public abstract class VillagerCombat : MonoBehaviour
         }
     }
 
+    // Mage buff system methods
+    protected virtual void UpdateMageBuffs()
+    {
+        // Clean up expired buffs and calculate total multiplier
+        var expiredBuffs = new List<MageHealingSystem>();
+        totalMageDamageMultiplier = 1f;
+
+        foreach (var kvp in mageDamageBuffs)
+        {
+            if (kvp.Key == null || kvp.Value <= Time.time)
+            {
+                expiredBuffs.Add(kvp.Key);
+            }
+            else
+            {
+                // Add buff multiplier
+                totalMageDamageMultiplier *= kvp.Key.GetDamageBuffMultiplier();
+            }
+        }
+
+        // Remove expired buffs
+        foreach (var expired in expiredBuffs)
+        {
+            mageDamageBuffs.Remove(expired);
+        }
+    }
+
+    public virtual void ApplyMageDamageBuff(MageHealingSystem mageSystem, float duration)
+    {
+        if (mageSystem == null) return;
+
+        float expiryTime = Time.time + duration;
+        mageDamageBuffs[mageSystem] = expiryTime;
+
+        if (debugTargeting)
+        {
+            Debug.Log($"{gameObject.name} received mage damage buff from {mageSystem.name} for {duration}s");
+        }
+    }
+
+    public virtual void RemoveMageDamageBuff(MageHealingSystem mageSystem)
+    {
+        if (mageDamageBuffs.ContainsKey(mageSystem))
+        {
+            mageDamageBuffs.Remove(mageSystem);
+
+            if (debugTargeting)
+            {
+                Debug.Log($"{gameObject.name} lost mage damage buff from {mageSystem.name}");
+            }
+        }
+    }
+
+    public virtual bool HasMageDamageBuff(MageHealingSystem mageSystem)
+    {
+        return mageDamageBuffs.ContainsKey(mageSystem) && mageDamageBuffs[mageSystem] > Time.time;
+    }
+
+    public virtual float GetTotalMageDamageMultiplier() => totalMageDamageMultiplier;
+
     public virtual void UpdateCombatStats()
     {
         if (villager == null) return;
@@ -313,6 +379,9 @@ public abstract class VillagerCombat : MonoBehaviour
 
         // Update damage based on tier
         currentDamage = baseDamage + Mathf.RoundToInt(stats.tier * damagePerTier);
+
+        // Apply mage damage buffs
+        currentDamage = Mathf.RoundToInt(currentDamage * totalMageDamageMultiplier);
 
         // Update cooldown based on tier
         currentAttackCooldown = baseAttackCooldown - (stats.tier * cooldownReductionPerTier);
@@ -341,6 +410,10 @@ public abstract class VillagerCombat : MonoBehaviour
         UpdateCombatStats();
         // Clear current target to re-evaluate
         currentTarget = null;
+
+        // Clear all mage buffs when becoming rebel (mages won't buff rebels)
+        mageDamageBuffs.Clear();
+        totalMageDamageMultiplier = 1f;
     }
 
     protected virtual void HandleStateChanged(Villager v, VillagerState newState)
@@ -371,6 +444,13 @@ public abstract class VillagerCombat : MonoBehaviour
             Gizmos.color = villager != null && villager.IsRebel() ? Color.red : Color.magenta;
             Gizmos.DrawLine(transform.position, currentTarget.position);
         }
+
+        // Draw mage buff indicator
+        if (Application.isPlaying && mageDamageBuffs.Count > 0)
+        {
+            Gizmos.color = Color.cyan;
+            Gizmos.DrawWireSphere(transform.position + Vector3.up * 1.5f, 0.3f);
+        }
     }
 
     protected virtual void OnDestroy()
@@ -380,7 +460,15 @@ public abstract class VillagerCombat : MonoBehaviour
             villager.OnVillagerRebel -= HandleRebellion;
             villager.OnStateChanged -= HandleStateChanged;
         }
+
+        // Clear mage buffs
+        mageDamageBuffs.Clear();
     }
-    
+
     public bool IsAttacking() => isAttacking;
+    public float GetEfficiency() => combatEfficiency;
+
+    // Public getters for mage buff system
+    public int GetMageBuffCount() => mageDamageBuffs.Count;
+    public Dictionary<MageHealingSystem, float> GetMageBuffs() => new Dictionary<MageHealingSystem, float>(mageDamageBuffs);
 }
