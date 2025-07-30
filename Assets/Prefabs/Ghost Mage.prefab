@@ -12,10 +12,12 @@ GameObject:
   - component: {fileID: 5625156893104416182}
   - component: {fileID: 307715885099082192}
   - component: {fileID: 6726762544470533484}
-  - component: {fileID: 8143308435585013849}
   - component: {fileID: 8156147005333253871}
   - component: {fileID: -7916615371203998812}
   - component: {fileID: 3780028207617714131}
+  - component: {fileID: 1473139512712991752}
+  - component: {fileID: 2437602835043947515}
+  - component: {fileID: 8427630398199696993}
   m_Layer: 7
   m_Name: Ghost Mage
   m_TagString: Enemy
@@ -159,27 +161,6 @@ NavMeshAgent:
   m_BaseOffset: 0.5
   m_WalkableMask: 4294967295
   m_ObstacleAvoidanceType: 4
---- !u!114 &8143308435585013849
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1180427520959586231}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: e938115987b8cc649abca5afc1b1a870, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  moveSpeed: 5
-  stoppingDistance: 1.5
-  pathUpdateRate: 0.2
-  shouldChasePlayer: 1
-  detectionRadius: 20
-  playerLayer:
-    serializedVersion: 2
-    m_Bits: 1
-  flipSpriteBasedOnDirection: 1
 --- !u!114 &8156147005333253871
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -192,7 +173,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 20c315e75c5400440a451da1876072ed, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  maxHealth: 3
+  maxHealth: 10
   currentHealth: 0
   destroyOnDeath: 1
   deathDelay: 0
@@ -206,7 +187,7 @@ MonoBehaviour:
   healSound: {fileID: 0}
   showHealthBar: 1
   healthBarContainer: {fileID: 6938690447418780512}
-  powerDropAmount: 1
+  powerDropAmount: 5
   dropPowerOnDeath: 1
   powerDropDelay: 0
   useOrbSystem: 1
@@ -238,22 +219,93 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   attackRange: 8
   attackCooldown: 2
-  damage: 1
+  damage: 5
   attackableLayers:
     serializedVersion: 2
     m_Bits: 1088
-  targetUpdateInterval: 0.5
+  targetUpdateInterval: 0.1
   debugTargeting: 0
   attackAnimationTime: 0.3
   pauseMovementDuringAttack: 1
   particleSystemPrefab: {fileID: 8054125026499939409, guid: a4a062fd2eb038141b5db7e004390217, type: 3}
   particleSpawnPoint: {fileID: 2286572862629694606}
   particleDuration: 2
-  coneAngle: 25
-  damageCollisionRadius: 0.3
+  animationWindupDelay: 0.1
+  colliderBaseSize: {x: 0.2, y: 1, z: 1}
+  colliderHitLayers:
+    serializedVersion: 2
+    m_Bits: 1088
+  colliderMaxDistance: 6
+  colliderMoveSpeed: 6
+  colliderGrowthRate: 7
   hitCooldownPerTarget: 0.1
   particleAttackSound: {fileID: 0}
   particleHitSound: {fileID: 0}
+--- !u!114 &1473139512712991752
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1180427520959586231}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: af8ba2ba57f5e594798d3cc47c8fdfcb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  moveSpeed: 5
+  preferredDistance: 7
+  minimumDistance: 3
+  detectionRadius: 10
+  flipSpriteBasedOnDirection: 1
+--- !u!50 &2437602835043947515
+Rigidbody2D:
+  serializedVersion: 4
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1180427520959586231}
+  m_BodyType: 1
+  m_Simulated: 1
+  m_UseFullKinematicContacts: 0
+  m_UseAutoMass: 0
+  m_Mass: 1
+  m_LinearDrag: 0
+  m_AngularDrag: 0.05
+  m_GravityScale: 1
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_Interpolate: 0
+  m_SleepingMode: 1
+  m_CollisionDetection: 0
+  m_Constraints: 0
+--- !u!95 &8427630398199696993
+Animator:
+  serializedVersion: 5
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1180427520959586231}
+  m_Enabled: 1
+  m_Avatar: {fileID: 0}
+  m_Controller: {fileID: 9100000, guid: 5ddd914e02da3a849b0eb948ac5521c1, type: 2}
+  m_CullingMode: 0
+  m_UpdateMode: 0
+  m_ApplyRootMotion: 0
+  m_LinearVelocityBlending: 0
+  m_StabilizeFeet: 0
+  m_WarningMessage: 
+  m_HasTransformHierarchy: 1
+  m_AllowConstantClipSamplingOptimization: 1
+  m_KeepAnimatorStateOnDisable: 0
+  m_WriteDefaultValuesOnDisable: 0
 --- !u!1 &3080122760031252925
 GameObject:
   m_ObjectHideFlags: 0

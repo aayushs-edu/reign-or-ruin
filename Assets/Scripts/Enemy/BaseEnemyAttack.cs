@@ -262,6 +262,9 @@ public abstract class BaseEnemyAttack : MonoBehaviour
     public virtual bool IsInAttackRange() => currentTarget != null && Vector3.Distance(transform.position, currentTarget.position) <= attackRange;
     public virtual float GetAttackCooldownRemaining() => Mathf.Max(0, attackCooldown - (Time.time - lastAttackTime));
     
+    public virtual LayerMask GetAttackableLayers() => attackableLayers;
+
+    public virtual bool IsAttacking() => isAttacking;
     public virtual void SetDamage(int newDamage)
     {
         damage = newDamage;
