@@ -46,8 +46,8 @@ GameObject:
   - component: {fileID: 8143308435585013849}
   - component: {fileID: 8156147005333253871}
   - component: {fileID: 844454752447434083}
-  - component: {fileID: 3626777718991868467}
   - component: {fileID: -6681207011033567198}
+  - component: {fileID: 4422143489276113466}
   m_Layer: 7
   m_Name: Ghost
   m_TagString: Enemy
@@ -241,6 +241,7 @@ MonoBehaviour:
   powerDropAmount: 1
   dropPowerOnDeath: 1
   powerDropDelay: 0
+  useOrbSystem: 1
   enemyTypeName: Enemy
 --- !u!114 &844454752447434083
 MonoBehaviour:
@@ -255,31 +256,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   typeName: Ghost
---- !u!114 &3626777718991868467
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1180427520959586231}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 01adb235504d00746a1a466c481c4d90, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  fireballPrefab: {fileID: 4743965979382757647, guid: 8a910f0f7347d7c4781cea677bf3cbf5, type: 3}
-  fireballSpawnPoint: {fileID: 8708747247356744102}
-  attackRange: 8
-  attackCooldown: 2
-  fireballSpeed: 10
-  damage: 1
-  attackableLayers:
-    serializedVersion: 2
-    m_Bits: 1088
-  targetUpdateInterval: 0.5
-  debugTargeting: 0
-  attackAnimationTime: 0.3
-  pauseMovementDuringAttack: 1
 --- !u!50 &-6681207011033567198
 Rigidbody2D:
   serializedVersion: 4
@@ -307,6 +283,32 @@ Rigidbody2D:
   m_SleepingMode: 1
   m_CollisionDetection: 0
   m_Constraints: 0
+--- !u!114 &4422143489276113466
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1180427520959586231}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f68e7a11e9b69a34eaf429ed27677b72, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  attackRange: 8
+  attackCooldown: 2
+  damage: 1
+  attackableLayers:
+    serializedVersion: 2
+    m_Bits: 1088
+  targetUpdateInterval: 0.5
+  debugTargeting: 0
+  attackAnimationTime: 0.3
+  pauseMovementDuringAttack: 0
+  fireballPrefab: {fileID: 4743965979382757647, guid: 8a910f0f7347d7c4781cea677bf3cbf5, type: 3}
+  fireballSpawnPoint: {fileID: 8708747247356744102}
+  fireballSpeed: 10
+  fireballLaunchSound: {fileID: 0}
 --- !u!1001 &585561361434836196
 PrefabInstance:
   m_ObjectHideFlags: 0

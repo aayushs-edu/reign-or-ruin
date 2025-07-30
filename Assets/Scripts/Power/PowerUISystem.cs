@@ -16,13 +16,6 @@ public class PowerUISystem : MonoBehaviour
     [SerializeField] private Image playerPowerFill;
     [SerializeField] private Color normalPowerColor = Color.blue;
     [SerializeField] private Color chargedPowerColor = Color.cyan;
-
-    [Header("Rebellion Warning UI")]
-    [SerializeField] private GameObject rebellionWarning;
-    [SerializeField] private Slider rebellionRiskBar;
-    [SerializeField] private TextMeshProUGUI rebellionRiskText;
-    [SerializeField] private Color lowRiskColor = Color.green;
-    [SerializeField] private Color highRiskColor = Color.red;
     
     [Header("Controls Info")]
     [SerializeField] private GameObject controlsPanel;
@@ -69,7 +62,6 @@ public class PowerUISystem : MonoBehaviour
             powerSystem.OnTotalPowerChanged += UpdateCommunalPowerUI;
             powerSystem.OnPlayerPowerChanged += UpdatePlayerPowerUI;
             powerSystem.OnVillagerPowerChanged += UpdateVillagerPowerUI;
-            powerSystem.OnRebellionRiskChanged += UpdateRebellionUI;
         }
     }
     
@@ -132,7 +124,6 @@ public class PowerUISystem : MonoBehaviour
         
         UpdateCommunalPowerUI(powerSystem.GetTotalCommunalPower());
         UpdatePlayerPowerUI(powerSystem.GetPlayerPower());
-        UpdateRebellionUI(powerSystem.GetRebellionRisk());
         
         // Update all villager UIs
         List<PowerHolder> villagers = powerSystem.GetVillagerPowers();
@@ -200,33 +191,6 @@ public class PowerUISystem : MonoBehaviour
         }
     }
     
-    private void UpdateRebellionUI(float rebellionRisk)
-    {
-        bool showWarning = rebellionRisk > 0.1f; // Show warning at 10% risk
-        
-        if (rebellionWarning != null)
-        {
-            rebellionWarning.SetActive(showWarning);
-        }
-        
-        if (rebellionRiskBar != null)
-        {
-            rebellionRiskBar.value = rebellionRisk;
-            
-            // Color the bar based on risk level
-            Image fill = rebellionRiskBar.fillRect?.GetComponent<Image>();
-            if (fill != null)
-            {
-                fill.color = Color.Lerp(lowRiskColor, highRiskColor, rebellionRisk);
-            }
-        }
-        
-        if (rebellionRiskText != null)
-        {
-            rebellionRiskText.text = $"Rebellion Risk: {rebellionRisk:P0}";
-        }
-    }
-    
     private void OnDestroy()
     {
         // Unsubscribe from events
@@ -235,7 +199,6 @@ public class PowerUISystem : MonoBehaviour
             powerSystem.OnTotalPowerChanged -= UpdateCommunalPowerUI;
             powerSystem.OnPlayerPowerChanged -= UpdatePlayerPowerUI;
             powerSystem.OnVillagerPowerChanged -= UpdateVillagerPowerUI;
-            powerSystem.OnRebellionRiskChanged -= UpdateRebellionUI;
         }
     }
 }

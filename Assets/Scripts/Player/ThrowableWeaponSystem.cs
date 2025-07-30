@@ -15,7 +15,10 @@ public enum WeaponState
 public class ThrowableWeaponSystem : MonoBehaviour
 {
     [Header("Weapon References")]
+    [SerializeField] private Transform weaponContainer;
     [SerializeField] private Transform weaponTransform;
+    [SerializeField] private GameObject weaponSprite;
+    [SerializeField] private Vector3 weaponSpriteOffset;
     [SerializeField] private SpriteRenderer weaponRenderer;
     [SerializeField] private Light2D weaponLight;
     [SerializeField] private Collider2D weaponCollider;
@@ -50,6 +53,9 @@ public class ThrowableWeaponSystem : MonoBehaviour
     [SerializeField] private float zoomFOV = 4f;
     [SerializeField] private float normalFOV = 6f;
     [SerializeField] private float cameraTransitionSpeed = 3f;
+
+    [SerializeField] private float chargeRotationSpeed = 90f; // Degrees per second during charge
+    [SerializeField] private float maxChargeRotation = 180f;
     
     [Header("Swing Attack")]
     [SerializeField] private float swingDamage = 1f;
@@ -111,6 +117,9 @@ public class ThrowableWeaponSystem : MonoBehaviour
     [SerializeField] private AnimationCurve volumeCurve = AnimationCurve.Linear(0, 0, 1, 1);
     [SerializeField] private float idleVolumeMultiplier = 0.5f; // Idle sound is usually quieter
 
+    [Header("Mouse Tracking")]
+    [SerializeField] private bool enableMouseTracking = true;
+
     // State variables
     private AudioSource idleAudioSource;
     private WeaponState currentState = WeaponState.Held;
@@ -142,6 +151,9 @@ public class ThrowableWeaponSystem : MonoBehaviour
     private Camera mainCamera;
     private AudioSource audioSource;
     private Transform originalParent;
+
+    // Add to state variables section
+    private float currentChargeRotation = 0f;
     
     // Events
     public System.Action<float> OnChargeChanged;
@@ -194,7 +206,7 @@ public class ThrowableWeaponSystem : MonoBehaviour
             idleAudioSource.volume = 0f;
         }
     }
-    
+
     private void InitializeComponents()
     {
         powerSystem = PowerSystem.Instance;
@@ -234,6 +246,12 @@ public class ThrowableWeaponSystem : MonoBehaviour
         {
             weaponCollider.isTrigger = true;
             weaponCollider.enabled = false; // Only enable when thrown or dropped
+        }
+        
+        // Apply sprite offset to position weapon sprite within container
+        if (weaponSprite != null)
+        {
+            weaponSprite.transform.localPosition = weaponSpriteOffset;
         }
     }
     
@@ -322,11 +340,19 @@ public class ThrowableWeaponSystem : MonoBehaviour
         // Left mouse button for throwing/swinging
         if (Input.GetMouseButtonDown(0))
         {
-            if (currentCharge >= minChargeToThrow)
+            // Only throw if not over a UI element
+            bool pointerOverUI = false;
+#if UNITY_STANDALONE || UNITY_EDITOR
+            if (UnityEngine.EventSystems.EventSystem.current != null)
+            {
+                pointerOverUI = UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject();
+            }
+#endif
+            if (!pointerOverUI && currentCharge >= minChargeToThrow)
             {
                 ThrowWeapon();
             }
-            else
+            else if (!pointerOverUI)
             {
                 SwingWeapon();
             }
@@ -362,14 +388,16 @@ public class ThrowableWeaponSystem : MonoBehaviour
         float aimDuration = Time.time - aimStartTime;
         currentIntensity = 1f + Mathf.Clamp01(aimDuration / maxAimTime) * (maxIntensityMultiplier - 1f);
     }
-    
+
     private void StopAiming()
     {
         isAiming = false;
         currentIntensity = 1f;
-        
+
         Cursor.SetCursor(null, Vector2.zero, CursorMode.Auto);
         targetCameraSize = normalFOV;
+        
+        ChangeState(WeaponState.Held);
     }
     
     private void ThrowWeapon()
@@ -516,25 +544,82 @@ public class ThrowableWeaponSystem : MonoBehaviour
     
     private void UpdateHeldBehavior()
     {
-        weaponTransform.localPosition = originalPosition;
-        
-        if (playerMovement != null && playerMovement.IsMoving())
+        // Reset charge rotation when not aiming
+        if (currentChargeRotation != 0f)
         {
-            float tilt = Mathf.Sin(Time.time * 3f) * 15f;
-            weaponTransform.localRotation = Quaternion.Euler(0, 0, tilt);
+            currentChargeRotation = Mathf.MoveTowards(currentChargeRotation, 0f, chargeRotationSpeed * 2f * Time.deltaTime);
+            if (weaponSprite != null)
+            {
+                weaponSprite.transform.localRotation = Quaternion.Euler(0, 0, currentChargeRotation);
+            }
+        }
+
+        // Mouse tracking when enabled and not moving
+        if (enableMouseTracking)
+        {
+            UpdateMouseRotation();
         }
         else
         {
-            weaponTransform.localRotation = Quaternion.Lerp(weaponTransform.localRotation, Quaternion.identity, Time.deltaTime * 5f);
+            // Return to neutral position when not moving and not tracking
+            weaponContainer.localRotation = Quaternion.Lerp(weaponContainer.localRotation, Quaternion.identity, Time.deltaTime * 5f);
         }
+    }
+
+    private void UpdateMouseRotation()
+    {
+        if (mainCamera == null) return;
+        
+        Vector3 mousePos = mainCamera.ScreenToWorldPoint(Input.mousePosition);
+        mousePos.z = 0f;
+        
+        Vector2 direction = (mousePos - weaponContainer.position).normalized;
+        weaponContainer.right = direction;
+        
+        // Handle sprite flipping like the villagers do
+        Vector2 scale = weaponContainer.localScale;
+        if (direction.x < 0)
+        {
+            scale.y = -1;
+        }
+        else
+        {
+            scale.y = 1;
+        }
+        weaponContainer.localScale = scale;
+    
+    }
+
+    // private void ReturnToIdleRotation()
+    // {
+    //     weaponTransform.localScale = Vector3.one;
+    //     weaponTransform.localRotation = Quaternion.Lerp(weaponTransform.localRotation, Quaternion.identity, 5 * Time.deltaTime);
+    // }
+
+    private bool IsPlayerMoving()
+    {
+        return playerMovement != null && playerMovement.IsMoving();
     }
     
     private void UpdateAimingBehavior()
     {
         if (throwDirection != Vector3.zero)
         {
+            // Rotate container to face throw direction
             float angle = Mathf.Atan2(throwDirection.y, throwDirection.x) * Mathf.Rad2Deg;
-            weaponTransform.rotation = Quaternion.Euler(0, 0, angle);
+            weaponContainer.rotation = Quaternion.Euler(0, 0, angle);
+            
+            // Add charging rotation to weapon sprite
+            if (weaponSprite != null)
+            {
+                // Calculate charge rotation based on intensity
+                float targetChargeRotation = (currentIntensity - 1f) / (maxIntensityMultiplier - 1f) * maxChargeRotation;
+                currentChargeRotation = Mathf.MoveTowards(currentChargeRotation, targetChargeRotation, chargeRotationSpeed * Time.deltaTime);
+                
+                // Apply both the sprite offset and the charge rotation
+                weaponSprite.transform.localPosition = weaponSpriteOffset;
+                weaponSprite.transform.localRotation = Quaternion.Euler(0, 0, currentChargeRotation);
+            }
         }
     }
     
@@ -771,8 +856,16 @@ public class ThrowableWeaponSystem : MonoBehaviour
         transform.SetParent(originalParent);
         
         ChangeState(WeaponState.Held);
-        weaponTransform.localPosition = originalPosition;
-        weaponTransform.localRotation = Quaternion.identity;
+        weaponContainer.localRotation = Quaternion.identity;
+        currentChargeRotation = 0f; // Reset charge rotation
+        
+        // Reset weapon sprite rotation and position
+        if (weaponSprite != null)
+        {
+            weaponSprite.transform.localPosition = weaponSpriteOffset;
+            weaponSprite.transform.localRotation = Quaternion.identity;
+        }
+        
         velocity = Vector3.zero;
         remainingPenetration = 0;
         thrownIntensity = 1f;

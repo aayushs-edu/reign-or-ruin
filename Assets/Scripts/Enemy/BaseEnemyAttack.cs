@@ -1,87 +1,71 @@
 using UnityEngine;
 using System.Collections.Generic;
-using System.Linq;
 
-public class EnemyAttackSystem : MonoBehaviour
+// Abstract base class for all enemy attack behaviors
+public abstract class BaseEnemyAttack : MonoBehaviour
 {
-    [Header("Attack Configuration")]
-    [SerializeField] private GameObject fireballPrefab;
-    [SerializeField] private Transform fireballSpawnPoint;
-    [SerializeField] private float attackRange = 8f;
-    [SerializeField] private float attackCooldown = 2f;
-    [SerializeField] private float fireballSpeed = 10f;
-    [SerializeField] private int damage = 1;
+    [Header("Base Attack Configuration")]
+    [SerializeField] protected float attackRange = 8f;
+    [SerializeField] protected float attackCooldown = 2f;
+    [SerializeField] protected int damage = 1;
+    [SerializeField] protected LayerMask attackableLayers;
     
     [Header("Target Detection")]
-    [SerializeField] private LayerMask attackableLayers;
-    [SerializeField] private float targetUpdateInterval = 0.5f;
-    [SerializeField] private bool debugTargeting = false;
+    [SerializeField] protected float targetUpdateInterval = 0.5f;
+    [SerializeField] protected bool debugTargeting = false;
     
     [Header("Attack Animation")]
-    [SerializeField] private float attackAnimationTime = 0.3f;
-    [SerializeField] private bool pauseMovementDuringAttack = true;
+    [SerializeField] protected float attackAnimationTime = 0.3f;
+    [SerializeField] protected bool pauseMovementDuringAttack = true;
     
     // Target categories
-    private readonly string[] attackableTags = { "Player", "Villager", "Building" };
+    protected readonly string[] attackableTags = { "Player", "Villager", "Building" };
     
     // State variables
-    private Transform currentTarget;
-    private float lastAttackTime;
-    private float lastTargetUpdate;
-    private bool isAttacking = false;
+    protected Transform currentTarget;
+    protected float lastAttackTime;
+    protected float lastTargetUpdate;
+    protected bool isAttacking = false;
     
     // Components
-    private EnemyAI enemyAI;
-    private Animator animator;
+    protected EnemyAI enemyAI;
+    protected Animator animator;
     
     // Events
     public System.Action<Transform> OnTargetChanged;
     public System.Action<Transform> OnAttack;
     
-    private void Start()
+    protected virtual void Start()
     {
         InitializeComponents();
         ValidateConfiguration();
     }
     
-    private void InitializeComponents()
+    protected virtual void InitializeComponents()
     {
         enemyAI = GetComponent<EnemyAI>();
         animator = GetComponent<Animator>();
         
-        // Auto-create spawn point if not assigned
-        if (fireballSpawnPoint == null)
-        {
-            GameObject spawnObj = new GameObject("FireballSpawnPoint");
-            spawnObj.transform.SetParent(transform);
-            spawnObj.transform.localPosition = new Vector3(0.5f, 0.5f, 0f);
-            fireballSpawnPoint = spawnObj.transform;
-            Debug.LogWarning($"EnemyAttackSystem: Created fireballSpawnPoint for {gameObject.name}");
-        }
-        
         // Set up default attackable layers if not configured
         if (attackableLayers == 0)
         {
-            attackableLayers = LayerMask.GetMask("Default"); // Adjust based on your layer setup
-            Debug.LogWarning("EnemyAttackSystem: No attackable layers set, using Default layer");
+            attackableLayers = LayerMask.GetMask("Default");
+            Debug.LogWarning($"{GetType().Name}: No attackable layers set, using Default layer");
         }
     }
     
-    private void ValidateConfiguration()
+    protected virtual void ValidateConfiguration()
     {
-        if (fireballPrefab == null)
-        {
-            Debug.LogError($"EnemyAttackSystem on {gameObject.name}: No fireball prefab assigned!");
-        }
+        // Override in derived classes to validate specific attack requirements
     }
     
-    private void Update()
+    protected virtual void Update()
     {
         UpdateTargeting();
         HandleAttacking();
     }
     
-    private void UpdateTargeting()
+    protected virtual void UpdateTargeting()
     {
         if (Time.time - lastTargetUpdate < targetUpdateInterval) return;
         
@@ -102,7 +86,7 @@ public class EnemyAttackSystem : MonoBehaviour
         }
     }
     
-    private Transform FindClosestTarget()
+    protected virtual Transform FindClosestTarget()
     {
         List<Transform> potentialTargets = new List<Transform>();
         
@@ -137,7 +121,7 @@ public class EnemyAttackSystem : MonoBehaviour
         return closest;
     }
     
-    private bool HasHealthComponent(GameObject obj)
+    protected virtual bool HasHealthComponent(GameObject obj)
     {
         // Check for different health component types
         return obj.GetComponent<Health>() != null || 
@@ -146,7 +130,7 @@ public class EnemyAttackSystem : MonoBehaviour
                obj.GetComponent<BuildingHealth>() != null;
     }
     
-    private void HandleAttacking()
+    protected virtual void HandleAttacking()
     {
         if (currentTarget == null || isAttacking) return;
         
@@ -159,7 +143,7 @@ public class EnemyAttackSystem : MonoBehaviour
         }
     }
     
-    private System.Collections.IEnumerator PerformAttack()
+    protected virtual System.Collections.IEnumerator PerformAttack()
     {
         isAttacking = true;
         lastAttackTime = Time.time;
@@ -182,10 +166,10 @@ public class EnemyAttackSystem : MonoBehaviour
         // Wait for attack animation wind-up
         yield return new WaitForSeconds(attackAnimationTime);
         
-        // Spawn fireball if target still exists and in range
-        if (currentTarget != null && Vector3.Distance(transform.position, currentTarget.position) <= attackRange * 1.2f)
+        // Execute the specific attack (implemented by derived classes)
+        if (currentTarget != null && IsTargetInRange())
         {
-            SpawnFireball();
+            ExecuteAttack();
             OnAttack?.Invoke(currentTarget);
         }
         
@@ -198,7 +182,13 @@ public class EnemyAttackSystem : MonoBehaviour
         isAttacking = false;
     }
     
-    private void FaceTarget()
+    protected virtual bool IsTargetInRange()
+    {
+        return currentTarget != null && 
+               Vector3.Distance(transform.position, currentTarget.position) <= attackRange * 1.2f;
+    }
+    
+    protected virtual void FaceTarget()
     {
         if (currentTarget == null) return;
         
@@ -213,46 +203,81 @@ public class EnemyAttackSystem : MonoBehaviour
         }
     }
     
-    private void SpawnFireball()
+    // Abstract method - must be implemented by derived classes
+    protected abstract void ExecuteAttack();
+    
+    // Utility method for damaging targets
+    protected virtual bool TryDamageTarget(GameObject target, int damageAmount = -1)
     {
-        if (fireballPrefab == null || fireballSpawnPoint == null) return;
+        int actualDamage = damageAmount == -1 ? damage : damageAmount;
         
-        GameObject fireball = Instantiate(fireballPrefab, fireballSpawnPoint.position, Quaternion.identity);
-        
-        // Set up fireball component
-        Fireball fireballScript = fireball.GetComponent<Fireball>();
-        if (fireballScript == null)
+        // Check for various health component types
+        Health health = target.GetComponent<Health>();
+        if (health != null)
         {
-            fireballScript = fireball.AddComponent<Fireball>();
+            health.TakeDamage(actualDamage);
+            return true;
         }
         
-        // Calculate direction to target
-        Vector3 direction = (currentTarget.position - fireballSpawnPoint.position).normalized;
-        
-        // Initialize fireball
-        fireballScript.Initialize(direction, fireballSpeed, damage, gameObject);
-        
-        // Set fireball rotation to face direction
-        float angle = Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg;
-        fireball.transform.rotation = Quaternion.Euler(0, 0, angle);
-        
-        if (debugTargeting)
+        EnemyHealth enemyHealth = target.GetComponent<EnemyHealth>();
+        if (enemyHealth != null)
         {
-            Debug.Log($"{gameObject.name} fired at {currentTarget.name}");
+            enemyHealth.TakeDamage(actualDamage);
+            return true;
         }
+        
+        PlayerHealth playerHealth = target.GetComponent<PlayerHealth>();
+        if (playerHealth != null)
+        {
+            playerHealth.TakeDamage(actualDamage);
+            return true;
+        }
+        
+        VillagerHealth villagerHealth = target.GetComponent<VillagerHealth>();
+        if (villagerHealth != null)
+        {
+            villagerHealth.TakeDamage(actualDamage);
+            return true;
+        }
+        
+        BuildingHealth buildingHealth = target.GetComponent<BuildingHealth>();
+        if (buildingHealth != null)
+        {
+            buildingHealth.TakeDamage(actualDamage);
+            return true;
+        }
+        
+        // Check if it's a valid target even if no health component
+        if (target.CompareTag("Player") || target.CompareTag("Villager") || target.CompareTag("Building"))
+        {
+            Debug.LogWarning($"Attack hit {target.name} but no health component found!");
+            return true;
+        }
+        
+        return false;
     }
     
     // Public methods
-    public Transform GetCurrentTarget() => currentTarget;
-    public bool IsInAttackRange() => currentTarget != null && Vector3.Distance(transform.position, currentTarget.position) <= attackRange;
-    public float GetAttackCooldownRemaining() => Mathf.Max(0, attackCooldown - (Time.time - lastAttackTime));
+    public virtual Transform GetCurrentTarget() => currentTarget;
+    public virtual bool IsInAttackRange() => currentTarget != null && Vector3.Distance(transform.position, currentTarget.position) <= attackRange;
+    public virtual float GetAttackCooldownRemaining() => Mathf.Max(0, attackCooldown - (Time.time - lastAttackTime));
     
-    public void SetDamage(int newDamage)
+    public virtual void SetDamage(int newDamage)
     {
         damage = newDamage;
     }
     
-    public void ForceAttack(Transform target)
+    public virtual void SetAttackRange(float newRange)
+    {
+        attackRange = newRange;
+    }
+    
+    public virtual void SetAttackCooldown(float newCooldown)
+    {
+        attackCooldown = newCooldown;
+    }
+    
+    public virtual void ForceAttack(Transform target)
     {
         currentTarget = target;
         if (enemyAI != null)
@@ -261,7 +286,7 @@ public class EnemyAttackSystem : MonoBehaviour
         }
     }
     
-    private void OnDrawGizmosSelected()
+    protected virtual void OnDrawGizmosSelected()
     {
         // Draw attack range
         Gizmos.color = Color.red;
@@ -272,13 +297,6 @@ public class EnemyAttackSystem : MonoBehaviour
         {
             Gizmos.color = Color.yellow;
             Gizmos.DrawLine(transform.position, currentTarget.position);
-        }
-        
-        // Draw spawn point
-        if (fireballSpawnPoint != null)
-        {
-            Gizmos.color = Color.cyan;
-            Gizmos.DrawWireSphere(fireballSpawnPoint.position, 0.2f);
         }
     }
 }

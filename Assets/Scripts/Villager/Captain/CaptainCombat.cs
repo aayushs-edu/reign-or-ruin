@@ -1,6 +1,5 @@
 using UnityEngine;
 using System.Collections;
-using System.Collections.Generic;
 
 public class CaptainCombat : VillagerCombat
 {
@@ -15,54 +14,26 @@ public class CaptainCombat : VillagerCombat
     [SerializeField] private float combatReadyDistance = 20f; // Distance at which sword starts tracking
     [SerializeField] private Vector3 swordSpriteOffset; // Offset of sprite from pivot point
     
-    [Header("Influence System")]
-    [SerializeField] private float baseInfluenceRadius = 8f;
-    [SerializeField] private float influenceRadiusPerTier = 3f;
-    [SerializeField] private LayerMask commonerLayer = -1;
-    
-    [Header("Commoner Stat Boosts")]
-    [SerializeField] private float baseDamageBoost = 0.25f; // 25% damage boost at tier 0
-    [SerializeField] private float damageBoostPerTier = 0.25f; // Additional 25% per tier
-    [SerializeField] private float baseSpeedBoost = 0.15f; // 15% speed boost at tier 0
-    [SerializeField] private float speedBoostPerTier = 0.15f; // Additional 15% per tier
-    [SerializeField] private float baseDamageReduction = 0.1f; // 10% damage reduction at tier 0
-    [SerializeField] private float damageReductionPerTier = 0.1f; // Additional 10% per tier
-    [SerializeField] private float baseCooldownReduction = 0.1f; // 10% cooldown reduction at tier 0
-    
-    [Header("Visual Effects")]
-    [SerializeField] private GameObject influenceIndicatorPrefab;
-    [SerializeField] private Color influenceRangeColor = new Color(0f, 1f, 0f, 0.2f);
-    [SerializeField] private bool showInfluenceRange = true;
-    
-    [Header("AoE Visual System")]
-    [SerializeField] private Transform aoeContainer; // Parent object containing AoE Circle and AoE Particles
-    [SerializeField] private Transform aoeCircle; // The visual circle
-    [SerializeField] private ParticleSystem aoeParticles; // Particles emitting from boundary
-    [SerializeField] private float circleScaleOffset = 0.5f; // Circle is 0.5 units larger than particle radius
-    [SerializeField] private Color aoeColor = new Color(0f, 1f, 0f, 0.3f); // Color for entire AoE system
-    [SerializeField] private bool autoFindAoEComponents = true;
-    
     [Header("Debug")]
     [SerializeField] private bool debugCombat = false;
-    [SerializeField] private bool debugInfluence = false;
     
     // Cached components
     private Animator swordAnimator;
     private SwordDamageDealer swordDamageDealer;
-    
-    // Influence system
-    private List<CommonerCombat> influencedCommoners = new List<CommonerCombat>();
-    private float currentInfluenceRadius;
-    private GameObject influenceIndicator;
-    private float lastInfluenceUpdate = 0f;
-    private const float influenceUpdateRate = 0.2f; // Update 5 times per second
-    
-    // AoE Visual Components
-    private SpriteRenderer aoeCircleRenderer;
+    private CaptainInfluenceSystem influenceSystem;
     
     protected override void Awake()
     {
         base.Awake();
+        
+        // Get the influence system component
+        influenceSystem = GetComponent<CaptainInfluenceSystem>();
+        if (influenceSystem == null)
+        {
+            // Add it if it doesn't exist
+            influenceSystem = gameObject.AddComponent<CaptainInfluenceSystem>();
+            Debug.Log($"CaptainCombat: Added CaptainInfluenceSystem to {gameObject.name}");
+        }
         
         // Auto-find sword hierarchy if not assigned
         if (swordTransform == null)
@@ -177,12 +148,6 @@ public class CaptainCombat : VillagerCombat
         {
             swordSprite.transform.localPosition = swordSpriteOffset;
         }
-        
-        // Create influence indicator
-        SetupAoEVisualSystem();
-        
-        // Initial influence update
-        UpdateInfluenceSystem();
     }
     
     protected override void Update()
@@ -213,13 +178,6 @@ public class CaptainCombat : VillagerCombat
                 ReturnToIdleRotation();
             }
         }
-
-        // Update influence system periodically
-        if (Time.time - lastInfluenceUpdate >= influenceUpdateRate)
-        {
-            UpdateInfluenceSystem();
-            lastInfluenceUpdate = Time.time;
-        }
     }
 
     // FIXED: Combined facing and weapon rotation logic with proper sprite flipping
@@ -248,8 +206,6 @@ public class CaptainCombat : VillagerCombat
         Quaternion targetRotation = Quaternion.Euler(0, 0, idleRotation);
         swordTransform.rotation = Quaternion.Lerp(swordTransform.rotation, targetRotation, 5 * Time.deltaTime);
     }
-    
-
     
     // CRITICAL FIX: Proper attack timing with damage window
     protected override IEnumerator PerformAttack()
@@ -283,279 +239,37 @@ public class CaptainCombat : VillagerCombat
         }
     }
     
-    // Rest of the influence system methods remain the same...
-    private void SetupAoEVisualSystem()
+    public override void UpdateCombatStats()
     {
-        // Auto-find AoE components if enabled
-        if (autoFindAoEComponents)
-        {
-            FindAoEComponents();
-        }
+        // Call base implementation first
+        base.UpdateCombatStats();
         
-        // Initialize AoE visual components
-        InitializeAoEComponents();
-        
-        // Set initial color
-        SetAoEColor(aoeColor);
-        
-        // Create fallback influence indicator if no AoE system found
-        if (aoeContainer == null && showInfluenceRange)
+        // Update damage dealer with new stats
+        if (swordDamageDealer != null)
         {
-            CreateInfluenceIndicator();
-        }
-    }
-    
-    private void FindAoEComponents()
-    {
-        // Find AoE container
-        if (aoeContainer == null)
-        {
-            Transform found = transform.Find("AoE");
-            if (found == null)
-            {
-                // Try alternative names
-                foreach (Transform child in transform)
-                {
-                    if (child.name.ToLower().Contains("aoe") || child.name.ToLower().Contains("influence"))
-                    {
-                        found = child;
-                        break;
-                    }
-                }
-            }
-            aoeContainer = found;
-        }
-        
-        if (aoeContainer != null)
-        {
-            // Find AoE Circle
-            if (aoeCircle == null)
-            {
-                Transform circleFound = aoeContainer.Find("AoE Circle");
-                if (circleFound == null)
-                {
-                    // Try alternative names
-                    foreach (Transform child in aoeContainer)
-                    {
-                        if (child.name.ToLower().Contains("circle"))
-                        {
-                            circleFound = child;
-                            break;
-                        }
-                    }
-                }
-                aoeCircle = circleFound;
-            }
+            swordDamageDealer.SetDamage(currentDamage);
             
-            // Find AoE Particles
-            if (aoeParticles == null)
+            if (debugCombat)
             {
-                ParticleSystem particlesFound = aoeContainer.GetComponentInChildren<ParticleSystem>();
-                if (particlesFound == null)
-                {
-                    Transform particlesTransform = aoeContainer.Find("AoE Particles");
-                    if (particlesTransform != null)
-                    {
-                        particlesFound = particlesTransform.GetComponent<ParticleSystem>();
-                    }
-                }
-                aoeParticles = particlesFound;
+                Debug.Log($"CaptainCombat: Updated {gameObject.name} damage to {currentDamage}");
             }
         }
         
-        if (debugInfluence)
+        // Notify influence system of tier change
+        if (influenceSystem != null)
         {
-            Debug.Log($"CaptainCombat: AoE components found - Container: {aoeContainer != null}, " +
-                     $"Circle: {aoeCircle != null}, Particles: {aoeParticles != null}");
+            influenceSystem.OnCaptainTierChanged();
         }
     }
     
-    private void InitializeAoEComponents()
+    protected override void HandleRebellion(Villager v)
     {
-        // Initialize circle renderer
-        if (aoeCircle != null)
+        base.HandleRebellion(v);
+        
+        // Notify influence system that captain became rebel
+        if (influenceSystem != null)
         {
-            aoeCircleRenderer = aoeCircle.GetComponent<SpriteRenderer>();
-            if (aoeCircleRenderer == null)
-            {
-                Debug.LogWarning($"CaptainCombat: AoE Circle {aoeCircle.name} has no SpriteRenderer!");
-            }
-        }
-        
-        // Initialize particle system modules
-        if (aoeParticles != null)
-        {
-            var shape = aoeParticles.shape;
-            
-            // Ensure shape is set to circle
-            shape.shapeType = ParticleSystemShapeType.Circle;
-            shape.radiusThickness = 0f; // Emit from edge only
-        }
-    }
-    
-    private void UpdateInfluenceIndicator()
-    {
-        // Update AoE visual system
-        UpdateAoEVisualSystem();
-        
-        // Update fallback influence indicator if it exists
-        if (influenceIndicator == null) return;
-        
-        // Update the circle size
-        LineRenderer lr = influenceIndicator.GetComponent<LineRenderer>();
-        if (lr != null)
-        {
-            int segments = lr.positionCount - 1;
-            for (int i = 0; i <= segments; i++)
-            {
-                float angle = i * Mathf.PI * 2f / segments;
-                Vector3 pos = new Vector3(Mathf.Cos(angle), Mathf.Sin(angle), 0f) * currentInfluenceRadius;
-                lr.SetPosition(i, pos);
-            }
-        }
-    }
-    
-    private void UpdateAoEVisualSystem()
-    {
-        if (aoeContainer == null) return;
-        
-        // Show/hide based on settings
-        aoeContainer.gameObject.SetActive(showInfluenceRange);
-        
-        if (!showInfluenceRange) return;
-        
-        // Update AoE Circle scale
-        if (aoeCircle != null)
-        {
-            float circleScale = currentInfluenceRadius + circleScaleOffset; // Diameter
-            aoeCircle.localScale = Vector3.one * circleScale;
-            
-            if (debugInfluence)
-            {
-                Debug.Log($"Updated AoE Circle scale to {circleScale} (radius: {currentInfluenceRadius + circleScaleOffset})");
-            }
-        }
-        
-        // Update particle system radius
-        if (aoeParticles != null)
-        {
-            var shape = aoeParticles.shape; // Get a fresh ShapeModule
-            shape.radius = currentInfluenceRadius;
-            
-            if (debugInfluence)
-            {
-                Debug.Log($"Updated AoE Particles radius to {currentInfluenceRadius}");
-            }
-        }
-    }
-    
-    private void UpdateInfluenceSystem()
-    {
-        if (villager == null) return;
-        
-        // Calculate current influence radius based on tier
-        VillagerStats stats = villager.GetStats();
-        currentInfluenceRadius = baseInfluenceRadius + (stats.tier * influenceRadiusPerTier);
-        
-        // Update visual indicator
-        UpdateInfluenceIndicator();
-        
-        // Find all commoners in range
-        List<CommonerCombat> nearbyCommoners = FindNearbyCommoners();
-        
-        // Remove influence from commoners no longer in range
-        foreach (var commoner in influencedCommoners.ToArray())
-        {
-            if (!nearbyCommoners.Contains(commoner) || commoner == null)
-            {
-                RemoveInfluenceFromCommoner(commoner);
-            }
-        }
-        
-        // Add influence to new commoners in range
-        foreach (var commoner in nearbyCommoners)
-        {
-            if (!influencedCommoners.Contains(commoner))
-            {
-                ApplyInfluenceToCommoner(commoner);
-            }
-        }
-        
-        if (debugInfluence && influencedCommoners.Count > 0)
-        {
-            Debug.Log($"Captain {gameObject.name} influencing {influencedCommoners.Count} commoners within {currentInfluenceRadius:F1} radius");
-        }
-    }
-    
-    private List<CommonerCombat> FindNearbyCommoners()
-    {
-        List<CommonerCombat> nearbyCommoners = new List<CommonerCombat>();
-        
-        // Find all colliders within influence radius
-        Collider2D[] colliders = Physics2D.OverlapCircleAll(transform.position, currentInfluenceRadius, commonerLayer);
-        
-        foreach (var collider in colliders)
-        {
-            // Skip self
-            if (collider.gameObject == gameObject) continue;
-            
-            // Check if it's a commoner
-            Villager villagerComponent = collider.GetComponent<Villager>();
-            if (villagerComponent != null && villagerComponent.GetRole() == VillagerRole.Commoner)
-            {
-                // Only influence loyal commoners (not rebels)
-                if (villagerComponent.IsLoyal() || villagerComponent.IsAngry())
-                {
-                    CommonerCombat commonerCombat = collider.GetComponent<CommonerCombat>();
-                    if (commonerCombat != null)
-                    {
-                        nearbyCommoners.Add(commonerCombat);
-                    }
-                }
-            }
-        }
-        
-        return nearbyCommoners;
-    }
-    
-    private void ApplyInfluenceToCommoner(CommonerCombat commoner)
-    {
-        if (commoner == null || villager == null) return;
-        
-        VillagerStats stats = villager.GetStats();
-        
-        // Calculate boost values based on captain's tier
-        float damageBoost = baseDamageBoost + (stats.tier * damageBoostPerTier);
-        float speedBoost = baseSpeedBoost + (stats.tier * speedBoostPerTier);
-        float damageReduction = baseDamageReduction + (stats.tier * damageReductionPerTier);
-        float cooldownReduction = baseCooldownReduction + (stats.tier * cooldownReductionPerTier);
-        
-        // Apply influence
-        commoner.ApplyCaptainInfluence(this, damageBoost, speedBoost, damageReduction, cooldownReduction);
-        
-        // Add to influenced list
-        influencedCommoners.Add(commoner);
-        
-        if (debugInfluence)
-        {
-            Debug.Log($"Captain {gameObject.name} (Tier {stats.tier}) applied influence to {commoner.name}: " +
-                     $"Damage +{damageBoost:P0}, Speed +{speedBoost:P0}, Damage Reduction {damageReduction:P0}, Cooldown -{cooldownReduction:P0}");
-        }
-    }
-    
-    private void RemoveInfluenceFromCommoner(CommonerCombat commoner)
-    {
-        if (commoner == null) return;
-        
-        // Remove influence
-        commoner.RemoveCaptainInfluence(this);
-        
-        // Remove from influenced list
-        influencedCommoners.Remove(commoner);
-        
-        if (debugInfluence)
-        {
-            Debug.Log($"Captain {gameObject.name} removed influence from {commoner.name}");
+            influenceSystem.OnCaptainBecameRebel();
         }
     }
     
@@ -564,66 +278,14 @@ public class CaptainCombat : VillagerCombat
     {
         base.OnDestroy();
         
-        // Remove influence from all commoners
-        foreach (var commoner in influencedCommoners.ToArray())
-        {
-            RemoveInfluenceFromCommoner(commoner);
-        }
-        
-        // Clean up influence indicator
-        if (influenceIndicator != null)
-        {
-            Destroy(influenceIndicator);
-        }
+        // The influence system will handle its own cleanup
     }
     
-    private void CreateInfluenceIndicator()
-    {
-        if (!showInfluenceRange) return;
-        
-        if (influenceIndicatorPrefab != null)
-        {
-            influenceIndicator = Instantiate(influenceIndicatorPrefab, transform);
-            influenceIndicator.transform.localPosition = Vector3.zero;
-        }
-        else
-        {
-            // Create a simple circle indicator
-            GameObject indicatorObj = new GameObject("InfluenceIndicator");
-            indicatorObj.transform.SetParent(transform);
-            indicatorObj.transform.localPosition = Vector3.zero;
-            
-            // Add a simple circle renderer
-            LineRenderer lr = indicatorObj.AddComponent<LineRenderer>();
-            lr.material = new Material(Shader.Find("Sprites/Default"));
-            lr.startColor = influenceRangeColor;
-            lr.endColor = influenceRangeColor;
-            lr.startWidth = 0.1f;
-            lr.endWidth = 0.1f;
-            lr.useWorldSpace = false;
-            
-            // Create circle points
-            int segments = 64;
-            lr.positionCount = segments + 1;
-            
-            for (int i = 0; i <= segments; i++)
-            {
-                float angle = i * Mathf.PI * 2f / segments;
-                Vector3 pos = new Vector3(Mathf.Cos(angle), Mathf.Sin(angle), 0f) * currentInfluenceRadius;
-                lr.SetPosition(i, pos);
-            }
-            
-            influenceIndicator = indicatorObj;
-        }
-    }
-    
-    // Public getters for other systems
-    public float GetCurrentInfluenceRadius() => currentInfluenceRadius;
-    public int GetInfluencedCommonersCount() => influencedCommoners.Count;
-    public List<CommonerCombat> GetInfluencedCommoners() => new List<CommonerCombat>(influencedCommoners);
-    public Color GetAoEColor() => aoeColor;
-    public bool IsAoEVisible() => showInfluenceRange;
-    public float GetCircleScaleOffset() => circleScaleOffset;
+    // Public getters that delegate to influence system
+    public float GetCurrentInfluenceRadius() => influenceSystem != null ? influenceSystem.GetCurrentInfluenceRadius() : 0f;
+    public int GetInfluencedCommonersCount() => influenceSystem != null ? influenceSystem.GetInfluencedCommonersCount() : 0;
+    public int GetFollowerCount() => influenceSystem != null ? influenceSystem.GetFollowerCount() : 0;
+    public int GetMaxFollowers() => influenceSystem != null ? influenceSystem.GetMaxFollowers() : 0;
     
     protected override void OnDrawGizmosSelected()
     {
@@ -652,82 +314,32 @@ public class CaptainCombat : VillagerCombat
         Gizmos.color = Color.green;
         Gizmos.DrawWireSphere(transform.position, combatReadyDistance);
 
-        // Draw influence radius
-        Gizmos.color = influenceRangeColor;
-        if (Application.isPlaying)
-        {
-            Gizmos.DrawWireSphere(transform.position, currentInfluenceRadius);
-        }
-        else
-        {
-            float estimatedRadius = baseInfluenceRadius + (2 * influenceRadiusPerTier); // Estimate at tier 2
-            Gizmos.DrawWireSphere(transform.position, estimatedRadius);
-        }
-
-        // Draw lines to influenced commoners
-        if (Application.isPlaying && influencedCommoners.Count > 0)
-        {
-            Gizmos.color = Color.blue;
-            foreach (var commoner in influencedCommoners)
-            {
-                if (commoner != null)
-                {
-                    Gizmos.DrawLine(transform.position, commoner.transform.position);
-                }
-            }
-        }
-
         // ADDED: Draw damage window visualization
         if (Application.isPlaying && debugCombat && isAttacking)
         {
             Gizmos.color = Color.red;
             Gizmos.DrawWireSphere(transform.position, 0.3f);
         }
+        
+        // Note: Influence radius and follower visualization is now handled by CaptainInfluenceSystem
     }
     
-    // Public methods for AoE visual control
-    public void SetAoEColor(Color newColor)
+    // Context menu for debugging
+    [ContextMenu("Debug Captain Stats")]
+    public void DebugCaptainStats()
     {
-        aoeColor = newColor;
+        Debug.Log($"Captain {gameObject.name} Combat Stats:");
+        Debug.Log($"  Damage: {currentDamage}");
+        Debug.Log($"  Attack Cooldown: {currentAttackCooldown:F2}s");
+        Debug.Log($"  Attack Range: {currentAttackRange:F2}");
+        Debug.Log($"  Combat Efficiency: {combatEfficiency:P0}");
         
-        // Update circle color
-        if (aoeCircleRenderer != null)
+        if (influenceSystem != null)
         {
-            aoeCircleRenderer.color = newColor;
-        }
-        
-        // Update particle color
-        if (aoeParticles != null)
-        {
-            var main = aoeParticles.main;
-            main.startColor = new ParticleSystem.MinMaxGradient(newColor);
-        }
-        
-        if (debugInfluence)
-        {
-            Debug.Log($"Captain {gameObject.name} AoE color set to {newColor}");
+            Debug.Log($"Captain {gameObject.name} Influence Stats:");
+            Debug.Log($"  Influence Radius: {influenceSystem.GetCurrentInfluenceRadius():F2}");
+            Debug.Log($"  Influenced Commoners: {influenceSystem.GetInfluencedCommonersCount()}");
+            Debug.Log($"  Followers: {influenceSystem.GetFollowerCount()}/{influenceSystem.GetMaxFollowers()}");
         }
     }
-    
-    public void SetAoEVisibility(bool visible)
-    {
-        showInfluenceRange = visible;
-        
-        if (aoeContainer != null)
-        {
-            aoeContainer.gameObject.SetActive(visible);
-        }
-        
-        if (influenceIndicator != null)
-        {
-            influenceIndicator.SetActive(visible);
-        }
-    }
-    
-    public void SetCircleScaleOffset(float offset)
-    {
-        circleScaleOffset = offset;
-        UpdateAoEVisualSystem(); // Immediately update visuals
-    }
-    
 }

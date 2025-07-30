@@ -317,19 +317,4 @@ public class VillageManager : MonoBehaviour
             villager.SetFoodLevel(foodLevel);
         }
     }
-    
-    // Test method for allocation phase
-    public void TestPowerAllocation()
-    {
-        Dictionary<Villager, int> testAllocation = new Dictionary<Villager, int>();
-        
-        foreach (var villager in villagers)
-        {
-            // Give random power for testing
-            int randomPower = Random.Range(0, 5);
-            testAllocation[villager] = randomPower;
-        }
-        
-        AllocatePowerToVillagers(testAllocation);
-    }
 }

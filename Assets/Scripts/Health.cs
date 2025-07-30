@@ -55,7 +55,7 @@ public class Health : MonoBehaviour
     
     protected virtual void InitializeComponents()
     {
-        spriteRenderer = GetComponent<SpriteRenderer>();
+        spriteRenderer = GetComponentInChildren<SpriteRenderer>();
         if (spriteRenderer != null)
         {
             originalColor = spriteRenderer.color;

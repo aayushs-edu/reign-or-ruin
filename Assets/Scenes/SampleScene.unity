@@ -154,6 +154,7 @@ Transform:
   - {fileID: 1771953386}
   - {fileID: 1038318668}
   - {fileID: 531257569}
+  - {fileID: 760448674}
   - {fileID: 1145298207}
   - {fileID: 221559542}
   - {fileID: 1732345126}
@@ -1236,6 +1237,7 @@ GameObject:
   - component: {fileID: 296951936}
   - component: {fileID: 296951935}
   - component: {fileID: 296951942}
+  - component: {fileID: 296951943}
   m_Layer: 10
   m_Name: Captain
   m_TagString: Villager
@@ -1297,29 +1299,7 @@ MonoBehaviour:
   idleRotation: 0
   combatReadyDistance: 4.8
   swordSpriteOffset: {x: 0.332, y: -0.299, z: 0}
-  baseInfluenceRadius: 3
-  influenceRadiusPerTier: 3
-  commonerLayer:
-    serializedVersion: 2
-    m_Bits: 1024
-  baseDamageBoost: 0.25
-  damageBoostPerTier: 0.25
-  baseSpeedBoost: 0.15
-  speedBoostPerTier: 0.15
-  baseDamageReduction: 0.1
-  damageReductionPerTier: 0.1
-  baseCooldownReduction: 0.1
-  influenceIndicatorPrefab: {fileID: 0}
-  influenceRangeColor: {r: 0, g: 1, b: 0, a: 0.43137255}
-  showInfluenceRange: 1
-  aoeContainer: {fileID: 2112337270}
-  aoeCircle: {fileID: 985218815}
-  aoeParticles: {fileID: 773227583}
-  circleScaleOffset: 1
-  aoeColor: {r: 0.8113208, g: 0.8113208, b: 0.8113208, a: 0.3}
-  autoFindAoEComponents: 1
   debugCombat: 0
-  debugInfluence: 0
 --- !u!195 &296951936
 NavMeshAgent:
   m_ObjectHideFlags: 0
@@ -1400,11 +1380,16 @@ MonoBehaviour:
   normalMoveSpeed: 2
   combatMoveSpeed: 3
   rebelMoveSpeed: 3.5
+  followMoveSpeed: 2.5
   attackRange: 5
   fleeRange: 8
   currentState: 0
   homePosition: {fileID: 1098517180}
   idleWanderRadius: 12
+  followStoppingDistance: 1
+  followUpdateRate: 0.2
+  captainLostTimeout: 3
+  debugFollowing: 0
 --- !u!114 &296951940
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1431,7 +1416,7 @@ MonoBehaviour:
   rebelSprite: {fileID: 21300000, guid: e4524d932d95edb4d9384bf0b5b08cf2, type: 3}
   angrySprite: {fileID: 21300000, guid: 49c38d1563251b24793c707b61aa2830, type: 3}
   selectedSprite: {fileID: 21300000, guid: a54b94786188c7e4e84b209069d67440, type: 3}
-  discontentConstants: {fileID: 11400000, guid: 395433a6016638045a3797984f7717bf, type: 2}
+  settings: {fileID: 11400000, guid: bd291e3e107407b4db0b9b51f8cd35f6, type: 2}
   baseDiscontentRate: 0.25
   powerDiscontentReduction: 0.12
   lowFoodDiscontentMultiplier: 2
@@ -1508,6 +1493,47 @@ MonoBehaviour:
   angryColor: {r: 1, g: 0.65, b: 0, a: 1}
   rebelColor: {r: 1, g: 0, b: 0, a: 1}
   debugMode: 0
+--- !u!114 &296951943
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 296951932}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: befbcf6035c32cc4492fbf36dde966ad, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  baseInfluenceRadius: 3
+  influenceRadiusPerTier: 3
+  commonerLayer:
+    serializedVersion: 2
+    m_Bits: 1024
+  influenceUpdateRate: 0.2
+  baseDamageBoost: 0.25
+  damageBoostPerTier: 0.25
+  baseSpeedBoost: 0.15
+  speedBoostPerTier: 0.15
+  baseDamageReduction: 0.1
+  damageReductionPerTier: 0.1
+  baseCooldownReduction: 0.1
+  cooldownReductionPerTier: 0.1
+  baseFollowerCount: 2
+  followersPerTier: 2
+  followDistance: 3
+  followSpacing: 1.5
+  followUpdateRate: 0.1
+  followSmoothing: 5
+  aoeContainer: {fileID: 2112337270}
+  aoeCircle: {fileID: 985218815}
+  aoeParticles: {fileID: 773227583}
+  circleScaleOffset: 0.5
+  aoeColor: {r: 0.7735849, g: 0.7735849, b: 0.7735849, a: 0.3}
+  autoFindAoEComponents: 1
+  showInfluenceRange: 1
+  debugInfluence: 0
+  debugFollowing: 0
 --- !u!1 &303257608
 GameObject:
   m_ObjectHideFlags: 0
@@ -2581,7 +2607,7 @@ Camera:
   far clip plane: 1000
   field of view: 34
   orthographic: 1
-  orthographic size: 6
+  orthographic size: 5.999999
   m_Depth: -1
   m_CullingMask:
     serializedVersion: 2
@@ -46121,6 +46147,11 @@ SpriteRenderer:
   m_WasSpriteAssigned: 1
   m_MaskInteraction: 0
   m_SpriteSortPoint: 0
+--- !u!4 &760448674 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 506122760181693640, guid: 20b2255d54825054db8db4e7f7842432, type: 3}
+  m_PrefabInstance: {fileID: 1811718375}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &773227580
 GameObject:
   m_ObjectHideFlags: 0
@@ -51284,7 +51315,7 @@ MonoBehaviour:
   m_Follow: {fileID: 523551847}
   m_Lens:
     FieldOfView: 34
-    OrthographicSize: 6
+    OrthographicSize: 5.999999
     NearClipPlane: 0.3
     FarClipPlane: 1000
     Dutch: 0
@@ -51439,6 +51470,10 @@ PrefabInstance:
       propertyPath: role
       value: 1
       objectReference: {fileID: 0}
+    - target: {fileID: 2853769374078530216, guid: 792ae8bf1bd21604cab0ffac9a2c4ac7, type: 3}
+      propertyPath: settings
+      value: 
+      objectReference: {fileID: 11400000, guid: bd291e3e107407b4db0b9b51f8cd35f6, type: 2}
     - target: {fileID: 2853769374078530216, guid: 792ae8bf1bd21604cab0ffac9a2c4ac7, type: 3}
       propertyPath: angrySprite
       value: 
@@ -53625,7 +53660,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   villagers: []
-  discontentConstants: {fileID: 11400000, guid: 395433a6016638045a3797984f7717bf, type: 2}
+  settings: {fileID: 11400000, guid: bd291e3e107407b4db0b9b51f8cd35f6, type: 2}
   totalFoodProduction: 8
   availablePower: 0
   playerPower: 0
@@ -74182,6 +74217,103 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1793735343}
   m_CullTransparentMesh: 1
+--- !u!1001 &1811718375
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 73638313}
+    m_Modifications:
+    - target: {fileID: 506122760181693640, guid: 20b2255d54825054db8db4e7f7842432, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 8.88
+      objectReference: {fileID: 0}
+    - target: {fileID: 506122760181693640, guid: 20b2255d54825054db8db4e7f7842432, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 4.26
+      objectReference: {fileID: 0}
+    - target: {fileID: 506122760181693640, guid: 20b2255d54825054db8db4e7f7842432, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: -0.09592613
+      objectReference: {fileID: 0}
+    - target: {fileID: 506122760181693640, guid: 20b2255d54825054db8db4e7f7842432, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 506122760181693640, guid: 20b2255d54825054db8db4e7f7842432, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: -0
+      objectReference: {fileID: 0}
+    - target: {fileID: 506122760181693640, guid: 20b2255d54825054db8db4e7f7842432, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: -0
+      objectReference: {fileID: 0}
+    - target: {fileID: 506122760181693640, guid: 20b2255d54825054db8db4e7f7842432, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: -0
+      objectReference: {fileID: 0}
+    - target: {fileID: 506122760181693640, guid: 20b2255d54825054db8db4e7f7842432, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 506122760181693640, guid: 20b2255d54825054db8db4e7f7842432, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 506122760181693640, guid: 20b2255d54825054db8db4e7f7842432, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1211060898580605693, guid: 20b2255d54825054db8db4e7f7842432, type: 3}
+      propertyPath: m_AnchorMax.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1211060898580605693, guid: 20b2255d54825054db8db4e7f7842432, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1626674188746990468, guid: 20b2255d54825054db8db4e7f7842432, type: 3}
+      propertyPath: m_Name
+      value: Commoner (1)
+      objectReference: {fileID: 0}
+    - target: {fileID: 2572567040556561927, guid: 20b2255d54825054db8db4e7f7842432, type: 3}
+      propertyPath: m_AnchorMax.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2572567040556561927, guid: 20b2255d54825054db8db4e7f7842432, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3796482184151718154, guid: 20b2255d54825054db8db4e7f7842432, type: 3}
+      propertyPath: m_AnchorMax.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3796482184151718154, guid: 20b2255d54825054db8db4e7f7842432, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4461805963420202953, guid: 20b2255d54825054db8db4e7f7842432, type: 3}
+      propertyPath: m_Camera
+      value: 
+      objectReference: {fileID: 519420031}
+    - target: {fileID: 8602233665962274555, guid: 20b2255d54825054db8db4e7f7842432, type: 3}
+      propertyPath: m_AnchorMax.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8602233665962274555, guid: 20b2255d54825054db8db4e7f7842432, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8677522615383418635, guid: 20b2255d54825054db8db4e7f7842432, type: 3}
+      propertyPath: homePosition
+      value: 
+      objectReference: {fileID: 358966591}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: 20b2255d54825054db8db4e7f7842432, type: 3}
 --- !u!1 &1827761482
 GameObject:
   m_ObjectHideFlags: 0

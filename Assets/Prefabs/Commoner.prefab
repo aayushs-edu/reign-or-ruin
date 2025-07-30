@@ -613,7 +613,7 @@ MonoBehaviour:
   destroyOnDeath: 1
   deathDelay: 0
   useFlashEffect: 1
-  flashDuration: 0.1
+  flashDuration: 0.5
   damageColor: {r: 1, g: 0, b: 0, a: 1}
   healColor: {r: 0, g: 1, b: 0, a: 1}
   deathEffectPrefab: {fileID: 4320992387669064381, guid: 4081bcc0283f7834a8bdf3c85386ed75, type: 3}
@@ -627,7 +627,6 @@ MonoBehaviour:
   rebelHealthMultiplier: 1.5
   witnessDeathRadius: 15
   useOrbSystem: 1
-  settings: {fileID: 11400000, guid: bd291e3e107407b4db0b9b51f8cd35f6, type: 2}
 --- !u!114 &8677522615383418635
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -643,11 +642,16 @@ MonoBehaviour:
   normalMoveSpeed: 2
   combatMoveSpeed: 3
   rebelMoveSpeed: 3.5
+  followMoveSpeed: 2.5
   attackRange: 5
   fleeRange: 8
   currentState: 0
   homePosition: {fileID: 0}
   idleWanderRadius: 3
+  followStoppingDistance: 1
+  followUpdateRate: 0.2
+  captainLostTimeout: 3
+  debugFollowing: 0
 --- !u!195 &4528093165871462221
 NavMeshAgent:
   m_ObjectHideFlags: 0

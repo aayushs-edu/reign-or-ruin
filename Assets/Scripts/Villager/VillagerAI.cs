@@ -7,6 +7,7 @@ public class VillagerAI : MonoBehaviour
     [SerializeField] private float normalMoveSpeed = 2f;
     [SerializeField] private float combatMoveSpeed = 3f;
     [SerializeField] private float rebelMoveSpeed = 3.5f;
+    [SerializeField] private float followMoveSpeed = 2.5f; // Speed when following captain
     [SerializeField] private float attackRange = 5f;
     [SerializeField] private float fleeRange = 8f;
     
@@ -15,6 +16,11 @@ public class VillagerAI : MonoBehaviour
     [SerializeField] private Transform homePosition;
     [SerializeField] private float idleWanderRadius = 3f;
     
+    [Header("Following System")]
+    [SerializeField] private float followStoppingDistance = 1f;
+    [SerializeField] private float followUpdateRate = 0.2f;
+    [SerializeField] private float captainLostTimeout = 3f; // Time before giving up on lost captain
+    
     public enum AIState
     {
         Idle,
@@ -22,7 +28,9 @@ public class VillagerAI : MonoBehaviour
         Fleeing,
         Fighting,
         Rebel,
-        MovingToTarget
+        MovingToTarget,
+        Following,
+        MovingToFollowPosition
     }
     
     // Components
@@ -33,9 +41,20 @@ public class VillagerAI : MonoBehaviour
     private Villager villager;
     private VillagerCombat combatComponent;
     
+    // Following system
+    private Transform followTarget; // The captain to follow
+    private Vector3 followPosition; // Specific position to move to
+    private float lastFollowUpdate;
+    private float captainLostTime;
+    private bool hasFollowTarget = false;
+    private bool hasFollowPosition = false;
+    
     // Timers
     private float stateChangeTimer;
     private float nextStateChange;
+    
+    [Header("Debug")]
+    [SerializeField] private bool debugFollowing = false;
     
     private void Start()
     {
@@ -66,6 +85,10 @@ public class VillagerAI : MonoBehaviour
         {
             UpdateRebelBehavior();
         }
+        else if (hasFollowTarget || hasFollowPosition)
+        {
+            UpdateFollowBehavior();
+        }
         else
         {
             UpdateNormalBehavior();
@@ -90,12 +113,123 @@ public class VillagerAI : MonoBehaviour
             case AIState.Rebel:
                 targetSpeed = rebelMoveSpeed;
                 break;
+            case AIState.Following:
+            case AIState.MovingToFollowPosition:
+                targetSpeed = followMoveSpeed;
+                break;
             default:
                 targetSpeed = normalMoveSpeed;
                 break;
         }
         
         agent.speed = targetSpeed;
+    }
+    
+    private void UpdateFollowBehavior()
+    {
+        // Priority 1: Combat target (followers can still fight)
+        if (combatTarget != null)
+        {
+            currentState = AIState.MovingToTarget;
+            MoveToTarget(combatTarget);
+            return;
+        }
+        
+        // Priority 2: Follow captain or move to follow position
+        if (hasFollowPosition)
+        {
+            UpdateFollowPosition();
+        }
+        else if (hasFollowTarget)
+        {
+            UpdateFollowTarget();
+        }
+    }
+    
+    private void UpdateFollowTarget()
+    {
+        if (followTarget == null)
+        {
+            // Captain is gone, stop following
+            ClearFollowTarget();
+            return;
+        }
+        
+        // Check if captain is still within reasonable distance
+        float distanceToCaptain = Vector3.Distance(transform.position, followTarget.position);
+        
+        if (distanceToCaptain > 20f) // Captain too far away
+        {
+            captainLostTime += Time.deltaTime;
+            if (captainLostTime >= captainLostTimeout)
+            {
+                if (debugFollowing)
+                {
+                    Debug.Log($"{gameObject.name} lost captain {followTarget.name}, stopping follow");
+                }
+                ClearFollowTarget();
+                return;
+            }
+        }
+        else
+        {
+            captainLostTime = 0f; // Reset timeout
+        }
+        
+        // Move towards captain (but not too close)
+        if (distanceToCaptain > followStoppingDistance * 2f)
+        {
+            currentState = AIState.Following;
+            if (agent != null && agent.isOnNavMesh)
+            {
+                agent.SetDestination(followTarget.position);
+            }
+        }
+        else
+        {
+            // Close enough, just idle near captain
+            currentState = AIState.Idle;
+            if (agent != null)
+            {
+                agent.ResetPath();
+            }
+        }
+    }
+    
+    private void UpdateFollowPosition()
+    {
+        if (Time.time - lastFollowUpdate < followUpdateRate) return;
+        lastFollowUpdate = Time.time;
+        
+        float distanceToPosition = Vector3.Distance(transform.position, followPosition);
+        
+        if (distanceToPosition > followStoppingDistance)
+        {
+            currentState = AIState.MovingToFollowPosition;
+            if (agent != null && agent.isOnNavMesh)
+            {
+                agent.SetDestination(followPosition);
+                
+                if (debugFollowing)
+                {
+                    Debug.Log($"{gameObject.name} moving to follow position {followPosition}, distance: {distanceToPosition:F2}");
+                }
+            }
+        }
+        else
+        {
+            // Reached follow position
+            currentState = AIState.Following;
+            if (agent != null)
+            {
+                agent.ResetPath();
+            }
+            
+            if (debugFollowing)
+            {
+                Debug.Log($"{gameObject.name} reached follow position");
+            }
+        }
     }
     
     private void UpdateNormalBehavior()
@@ -234,6 +368,56 @@ public class VillagerAI : MonoBehaviour
         return nearest;
     }
     
+    // Following system methods
+    public void SetFollowTarget(Transform captain)
+    {
+        followTarget = captain;
+        hasFollowTarget = captain != null;
+        captainLostTime = 0f;
+        
+        if (captain != null)
+        {
+            currentState = AIState.Following;
+            
+            if (debugFollowing)
+            {
+                Debug.Log($"{gameObject.name} now following captain {captain.name}");
+            }
+        }
+        else if (debugFollowing)
+        {
+            Debug.Log($"{gameObject.name} stopped following captain");
+        }
+    }
+    
+    public void SetFollowPosition(Vector3 position)
+    {
+        followPosition = position;
+        hasFollowPosition = true;
+        lastFollowUpdate = 0f; // Force immediate update
+        
+        if (debugFollowing)
+        {
+            Debug.Log($"{gameObject.name} assigned follow position {position}");
+        }
+    }
+    
+    public void ClearFollowTarget()
+    {
+        followTarget = null;
+        hasFollowTarget = false;
+        hasFollowPosition = false;
+        captainLostTime = 0f;
+        
+        currentState = AIState.Idle;
+        
+        if (debugFollowing)
+        {
+            Debug.Log($"{gameObject.name} cleared follow target and position");
+        }
+    }
+    
+    // Combat system methods (existing)
     public void SetCombatTarget(Transform target)
     {
         combatTarget = target;
@@ -264,19 +448,42 @@ public class VillagerAI : MonoBehaviour
         }
         else
         {
-            currentState = isRebel ? AIState.Rebel : AIState.Idle;
+            // Return to previous state based on following status
+            if (hasFollowTarget || hasFollowPosition)
+            {
+                currentState = AIState.Following;
+            }
+            else
+            {
+                currentState = isRebel ? AIState.Rebel : AIState.Idle;
+            }
         }
     }
     
     public void ClearCombatTarget()
     {
         combatTarget = null;
-        currentState = isRebel ? AIState.Rebel : AIState.Idle;
+        
+        // Return to appropriate state
+        if (hasFollowTarget || hasFollowPosition)
+        {
+            currentState = AIState.Following;
+        }
+        else
+        {
+            currentState = isRebel ? AIState.Rebel : AIState.Idle;
+        }
     }
     
     public void SetRebel(bool rebel)
     {
         isRebel = rebel;
+        
+        if (rebel)
+        {
+            // Rebels don't follow anyone
+            ClearFollowTarget();
+        }
         
         if (agent != null)
         {
@@ -286,10 +493,16 @@ public class VillagerAI : MonoBehaviour
         currentState = isRebel ? AIState.Rebel : AIState.Idle;
     }
     
+    // Public getters
     public bool IsRebel() => isRebel;
     public AIState GetCurrentState() => currentState;
     public bool IsInCombat() => currentState == AIState.Fighting || currentState == AIState.MovingToTarget;
+    public bool IsFollowing() => hasFollowTarget || hasFollowPosition;
+    public Transform GetFollowTarget() => followTarget;
+    public Vector3 GetFollowPosition() => followPosition;
     public float GetDistanceToTarget() => combatTarget != null ? Vector3.Distance(transform.position, combatTarget.position) : float.MaxValue;
+    public float GetDistanceToFollowTarget() => followTarget != null ? Vector3.Distance(transform.position, followTarget.position) : float.MaxValue;
+    public float GetDistanceToFollowPosition() => hasFollowPosition ? Vector3.Distance(transform.position, followPosition) : float.MaxValue;
     
     private void OnDrawGizmosSelected()
     {
@@ -302,13 +515,35 @@ public class VillagerAI : MonoBehaviour
         }
         
         // Draw flee range
-        Gizmos.color = Color.yellow;
-        Gizmos.DrawWireSphere(transform.position, fleeRange);
+        if (!isRebel && !hasFollowTarget)
+        {
+            Gizmos.color = Color.yellow;
+            Gizmos.DrawWireSphere(transform.position, fleeRange);
+        }
         
         // Draw path
         if (agent != null && agent.hasPath)
         {
-            Gizmos.color = currentState == AIState.Fleeing ? Color.yellow : Color.green;
+            Color pathColor = Color.green;
+            
+            switch (currentState)
+            {
+                case AIState.Fleeing:
+                    pathColor = Color.yellow;
+                    break;
+                case AIState.Following:
+                case AIState.MovingToFollowPosition:
+                    pathColor = Color.cyan;
+                    break;
+                case AIState.Rebel:
+                    pathColor = Color.red;
+                    break;
+                case AIState.MovingToTarget:
+                    pathColor = Color.black;
+                    break;
+            }
+            
+            Gizmos.color = pathColor;
             Vector3[] path = agent.path.corners;
             for (int i = 0; i < path.Length - 1; i++)
             {
@@ -322,5 +557,32 @@ public class VillagerAI : MonoBehaviour
             Gizmos.color = Color.red;
             Gizmos.DrawLine(transform.position, combatTarget.position);
         }
+        
+        // Draw line to follow target
+        if (followTarget != null)
+        {
+            Gizmos.color = Color.cyan;
+            Gizmos.DrawLine(transform.position, followTarget.position);
+            
+            // Draw follow stopping distance
+            Gizmos.DrawWireSphere(followTarget.position, followStoppingDistance * 2f);
+        }
+        
+        // Draw follow position
+        if (hasFollowPosition)
+        {
+            Gizmos.color = Color.green;
+            Gizmos.DrawWireSphere(followPosition, followStoppingDistance);
+            Gizmos.DrawLine(transform.position, followPosition);
+        }
+        
+        // Draw state indicator
+        Vector3 statePos = transform.position + Vector3.up * 2f;
+        Gizmos.color = Color.white;
+        
+        // This would show in scene view
+        #if UNITY_EDITOR
+                UnityEditor.Handles.Label(statePos, $"{currentState}\n{(IsFollowing() ? "Following" : "")}\n{(isRebel ? "Rebel" : "Loyal")}");
+                #endif
     }
 }
