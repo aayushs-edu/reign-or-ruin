@@ -94,7 +94,7 @@ public class EnemyAI : MonoBehaviour
         pos.z = 0f;
         transform.position = pos;
     }
-    
+
     private void LateUpdate()
     {
         // Force Z position to stay at 0 for 2D
@@ -103,6 +103,12 @@ public class EnemyAI : MonoBehaviour
             Vector3 pos = transform.position;
             pos.z = 0f;
             transform.position = pos;
+        }
+        
+        if (transform.rotation.eulerAngles.x != 0f)
+        {
+            // Reset rotation to avoid 3D rotation issues
+            transform.rotation = Quaternion.Euler(0f, 0f, 0f);
         }
     }
     

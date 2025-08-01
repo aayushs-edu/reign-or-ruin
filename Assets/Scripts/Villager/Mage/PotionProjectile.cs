@@ -17,6 +17,10 @@ public class PotionProjectile : MonoBehaviour
     [SerializeField] private bool destroyOnImpact = true;
     [SerializeField] private float destroyDelay = 0.1f; // Small delay to allow particle effects
     
+    [Header("Villager Impact")]
+    [SerializeField] private bool canImpactOnVillagers = true; // Allow early impact on villagers
+    [SerializeField] private LayerMask villagerLayers = -1; // What counts as villagers
+    
     [Header("Visual Settings")]
     [SerializeField] private SpriteRenderer potionSprite;
     [SerializeField] private ParticleSystem trailEffect;
@@ -140,7 +144,7 @@ public class PotionProjectile : MonoBehaviour
         
         if (debugProjectile)
         {
-            Debug.Log($"Potion launched from {start} to {target} with {healing} healing");
+            Debug.Log($"Potion launched from {start} to {target} with {healing} healing, can impact villagers: {canImpactOnVillagers}");
         }
         
         // Start flight coroutine
@@ -236,7 +240,7 @@ public class PotionProjectile : MonoBehaviour
     private void ApplyHealingEffect()
     {
         // Find all villagers within impact radius
-        Collider2D[] nearbyColliders = Physics2D.OverlapCircleAll(transform.position, impactRadius, impactLayers);
+        Collider2D[] nearbyColliders = Physics2D.OverlapCircleAll(transform.position, impactRadius, villagerLayers);
         
         int villagersHealed = 0;
         
@@ -307,22 +311,64 @@ public class PotionProjectile : MonoBehaviour
         // Trigger early impact if hitting something solid (ground, walls, etc.)
         if (!isFlying) return;
         
-        // Check if we hit something that should stop the projectile
+        // Check if we hit a villager or player (early impact for healing)
+        if (canImpactOnVillagers && ShouldImpactOnVillager(other))
+        {
+            if (debugProjectile)
+            {
+                Debug.Log($"Potion hit villager {other.name} - triggering early impact");
+            }
+            
+            // Trigger immediate impact at current position
+            OnReachTarget();
+            return;
+        }
+        
+        // Check if we hit something that should stop the projectile (walls, ground, etc.)
         if (ShouldTriggerEarlyImpact(other))
         {
+            if (debugProjectile)
+            {
+                Debug.Log($"Potion hit obstacle {other.name} - triggering early impact");
+            }
+            
             // Adjust target position to current position for immediate impact
             targetPosition = transform.position;
             OnReachTarget();
         }
     }
     
+    private bool ShouldImpactOnVillager(Collider2D other)
+    {
+        // Check if it's a villager that needs healing
+        VillagerHealth villagerHealth = other.GetComponent<VillagerHealth>();
+        if (villagerHealth != null)
+        {
+            // Only impact if villager actually needs healing
+            bool needsHealing = villagerHealth.GetCurrentHP() < villagerHealth.GetMaxHP();
+            bool isInVillagerLayer = IsInLayerMask(other.gameObject.layer, villagerLayers);
+            
+            return needsHealing && isInVillagerLayer;
+        }
+        
+        // Check if it's the player
+        PlayerHealth playerHealth = other.GetComponent<PlayerHealth>();
+        if (playerHealth != null)
+        {
+            // Only impact if player needs healing
+            return playerHealth.GetHealthPercentage() < 1f;
+        }
+        
+        return false;
+    }
+    
     private bool ShouldTriggerEarlyImpact(Collider2D other)
     {
-        // Don't trigger on villagers (potion passes through them)
+        // Don't trigger on villagers/player - they're handled by ShouldImpactOnVillager
         if (other.GetComponent<Villager>() != null) return false;
         if (other.CompareTag("Player")) return false;
         
-        // Check layer mask
+        // Check if it's an obstacle (walls, ground, etc.)
         return IsInLayerMask(other.gameObject.layer, impactLayers);
     }
     
@@ -331,7 +377,17 @@ public class PotionProjectile : MonoBehaviour
         return (layerMask.value & (1 << layer)) != 0;
     }
     
-    // Public methods for configuration
+    // Public configuration methods
+    public void SetCanImpactOnVillagers(bool canImpact)
+    {
+        canImpactOnVillagers = canImpact;
+        
+        if (debugProjectile)
+        {
+            Debug.Log($"Potion {gameObject.name} can impact on villagers: {canImpact}");
+        }
+    }
+    
     public void SetFlightDuration(float duration)
     {
         flightDuration = duration;
@@ -363,8 +419,14 @@ public class PotionProjectile : MonoBehaviour
         impactRadius = radius;
     }
     
+    public void SetVillagerLayers(LayerMask layers)
+    {
+        villagerLayers = layers;
+    }
+    
     // Public getters
     public bool IsFlying() => isFlying;
+    public bool CanImpactOnVillagers() => canImpactOnVillagers;
     public float GetFlightProgress()
     {
         if (!isFlying) return 1f;
@@ -413,6 +475,15 @@ public class PotionProjectile : MonoBehaviour
                 prevPos = currentPos;
             }
         }
+        
+        // Draw villager detection range when flying
+        if (isFlying && canImpactOnVillagers)
+        {
+            Gizmos.color = Color.cyan;
+            float colliderRadius = projectileCollider != null ? 
+                (projectileCollider is CircleCollider2D circle ? circle.radius : 0.5f) : 0.5f;
+            Gizmos.DrawWireSphere(transform.position, colliderRadius);
+        }
     }
     
     // Context menu for testing
@@ -424,6 +495,12 @@ public class PotionProjectile : MonoBehaviour
             Vector3 testTarget = transform.position + Vector3.right * 5f;
             Launch(transform.position, testTarget, 10);
         }
+    }
+    
+    [ContextMenu("Toggle Villager Impact")]
+    public void ToggleVillagerImpact()
+    {
+        SetCanImpactOnVillagers(!canImpactOnVillagers);
     }
     
     private void OnDestroy()
