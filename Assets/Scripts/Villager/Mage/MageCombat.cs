@@ -18,6 +18,12 @@ public class MageCombat : VillagerCombat
     [SerializeField] private float throwAnimationDuration = 0.8f;
     [SerializeField] private AnimationCurve potionArcCurve = AnimationCurve.EaseInOut(0, 0, 1, 1);
     
+    [Header("Active Healing Movement")]
+    [SerializeField] private float healSeekRange = 15f; // Range to look for injured villagers
+    [SerializeField] private float optimalHealDistance = 6f; // Preferred distance to maintain from heal target
+    [SerializeField] private bool enableActiveHealing = true;
+
+
     [Header("Auto-Find Components")]
     [SerializeField] private bool autoFindThrowPoint = true;
     [SerializeField] private bool autoFindStaff = true;
@@ -45,10 +51,16 @@ public class MageCombat : VillagerCombat
     private bool isFleeing = false;
     private Transform currentThreat;
     
+    // Add these private variables (around line 80 after existing private variables)
+    private Transform seekHealTarget; // Villager we're moving toward to heal
+    private bool isSeekingHealTarget = false;
+    private bool isCommittedToTarget = false; // Prevents target switching mid-heal
+
+    
     protected override void Awake()
     {
         base.Awake();
-        
+
         // Get mage-specific components
         healingSystem = GetComponent<MageHealingSystem>();
         if (healingSystem == null)
@@ -56,23 +68,23 @@ public class MageCombat : VillagerCombat
             healingSystem = gameObject.AddComponent<MageHealingSystem>();
             Debug.Log($"MageCombat: Added MageHealingSystem to {gameObject.name}");
         }
-        
+
         // Auto-find components
         if (autoFindThrowPoint && throwPoint == null)
         {
             FindThrowPoint();
         }
-        
+
         if (autoFindStaff && staffTransform == null)
         {
             FindStaff();
         }
-        
+
         if (autoFindPotionBar && potionBar == null)
         {
             FindPotionBar();
         }
-        
+
         mageAnimator = GetComponent<Animator>();
     }
     
@@ -199,10 +211,16 @@ public class MageCombat : VillagerCombat
         // Instead, they focus on healing and fleeing
         
         if (!CanOperate()) return;
-        
+    
         UpdateThreatDetection();
         UpdatePotionThrowing();
         UpdateStaffRotation();
+        
+        // Update heal seeking when not fleeing or throwing
+        if (enableActiveHealing && !isFleeing && !isThrowing && isCommittedToTarget)
+        {
+            UpdateHealSeeking();
+        }
     }
     
     private bool CanOperate()
@@ -312,9 +330,10 @@ public class MageCombat : VillagerCombat
         {
             // Hide potion bar when not actively brewing
             UpdatePotionBarVisibility(false);
+            ClearSeekTarget(); // Stop seeking when can't operate
             return;
         }
-        
+
         // Check cooldown
         float cooldownRemaining = throwCooldown - (Time.time - lastThrowTime);
         if (cooldownRemaining > 0)
@@ -322,35 +341,97 @@ public class MageCombat : VillagerCombat
             // Show brewing progress during cooldown
             UpdatePotionBarProgress(1f - (cooldownRemaining / throwCooldown));
             UpdatePotionBarVisibility(true);
+            
+            // Continue seeking committed target even during cooldown
+            if (enableActiveHealing && isCommittedToTarget)
+            {
+                UpdateHealSeeking();
+            }
             return;
         }
-        
-        // Find villager who needs healing
-        Transform healTarget = FindHealTarget();
-        
-        if (healTarget != null)
+
+        // If we're committed to a target, check if we can heal them now
+        if (isCommittedToTarget && seekHealTarget != null)
         {
-            // Reset bar for new potion throw
-            UpdatePotionBarProgress(0f);
-            UpdatePotionBarVisibility(false); // Hide during throw animation
+            float distanceToCommittedTarget = Vector3.Distance(transform.position, seekHealTarget.position);
             
-            currentHealTarget = healTarget;
-            StartCoroutine(ThrowPotionSequence());
+            // Check if committed target is now in range
+            if (distanceToCommittedTarget <= throwRange)
+            {
+                // Target in range - throw potion
+                UpdatePotionBarProgress(0f);
+                UpdatePotionBarVisibility(false);
+                
+                currentHealTarget = seekHealTarget;
+                ClearSeekTarget(); // This will clear commitment too
+                StartCoroutine(ThrowPotionSequence());
+                return;
+            }
+            
+            // Check if committed target still needs healing
+            VillagerHealth targetHealth = seekHealTarget.GetComponent<VillagerHealth>();
+            if (targetHealth == null || targetHealth.GetCurrentHP() >= targetHealth.GetMaxHP())
+            {
+                // Target no longer needs healing - clear commitment
+                ClearSeekTarget();
+            }
+            else
+            {
+                // Continue seeking committed target
+                UpdatePotionBarProgress(1f);
+                UpdatePotionBarVisibility(true);
+                UpdateHealSeeking();
+                return;
+            }
         }
-        else
+
+        // Only look for new targets if not committed to one
+        if (!isCommittedToTarget)
         {
-            // No target, show full bar (potion ready but no target)
-            UpdatePotionBarProgress(1f);
-            UpdatePotionBarVisibility(true);
+            // Find villager who needs healing (check both in range and extended range)
+            Transform healTarget = FindHealTarget();
+            Transform extendedHealTarget = enableActiveHealing ? FindHealTargetExtended() : null;
+
+            if (healTarget != null)
+            {
+                // Target in range - throw potion immediately
+                UpdatePotionBarProgress(0f);
+                UpdatePotionBarVisibility(false);
+                
+                currentHealTarget = healTarget;
+                ClearSeekTarget(); // Make sure we're not seeking anyone else
+                StartCoroutine(ThrowPotionSequence());
+            }
+            else if (enableActiveHealing && extendedHealTarget != null)
+            {
+                // Target out of range but within seek range - commit and move toward them
+                SetSeekTarget(extendedHealTarget);
+                
+                // Show potion ready but indicate we're moving to target
+                UpdatePotionBarProgress(1f);
+                UpdatePotionBarVisibility(true);
+            }
+            else
+            {
+                // No target at all
+                ClearSeekTarget();
+                
+                // Show full bar (potion ready but no target)
+                UpdatePotionBarProgress(1f);
+                UpdatePotionBarVisibility(true);
+            }
         }
     }
     
-    private Transform FindHealTarget()
+    // Add these new methods to the MageCombat class:
+
+    private Transform FindHealTargetExtended()
     {
         Transform bestTarget = null;
-        float lowestHealthRatio = 1f; // Only heal if below 100% health
-        
-        // Find all villagers within throw range
+        float lowestHealthRatio = 0.8f; // Only seek targets below 80% health
+        float closestDistance = healSeekRange;
+
+        // Find all villagers within extended seek range
         Villager[] allVillagers = FindObjectsOfType<Villager>();
         
         foreach (Villager v in allVillagers)
@@ -360,7 +441,8 @@ public class MageCombat : VillagerCombat
             if (!v.IsRebel() && villager.IsRebel()) continue; // Rebels don't heal loyals
             
             float distance = Vector3.Distance(transform.position, v.transform.position);
-            if (distance > throwRange) continue;
+            if (distance > healSeekRange) continue;
+            if (distance <= throwRange) continue; // Skip targets already in throw range (handled by FindHealTarget)
             
             // Check health ratio
             VillagerHealth vHealth = v.GetComponent<VillagerHealth>();
@@ -368,6 +450,177 @@ public class MageCombat : VillagerCombat
             {
                 float healthRatio = (float)vHealth.GetCurrentHP() / vHealth.GetMaxHP();
                 
+                // Prioritize lower health, but prefer closer targets if health is similar
+                if (healthRatio < lowestHealthRatio || 
+                    (Mathf.Abs(healthRatio - lowestHealthRatio) < 0.1f && distance < closestDistance))
+                {
+                    lowestHealthRatio = healthRatio;
+                    closestDistance = distance;
+                    bestTarget = v.transform;
+                }
+            }
+        }
+        
+        // Also check for player within extended seek range
+        GameObject player = GameObject.FindGameObjectWithTag("Player");
+        if (player != null)
+        {
+            float distance = Vector3.Distance(transform.position, player.transform.position);
+            if (distance <= healSeekRange && distance > throwRange) // Not already in throw range
+            {
+                // Check if player needs healing
+                PlayerHealth playerHealth = player.GetComponent<PlayerHealth>();
+                if (playerHealth != null)
+                {
+                    float playerHealthRatio = (float)playerHealth.GetHealthPercentage();
+                    
+                    // Prioritize lower health, but prefer closer targets if health is similar
+                    if (playerHealthRatio < lowestHealthRatio || 
+                        (Mathf.Abs(playerHealthRatio - lowestHealthRatio) < 0.1f && distance < closestDistance))
+                    {
+                        lowestHealthRatio = playerHealthRatio;
+                        closestDistance = distance;
+                        bestTarget = player.transform;
+                    }
+                }
+            }
+        }
+
+        return bestTarget;
+    }
+
+    private void SetSeekTarget(Transform target)
+    {
+        if (seekHealTarget != target)
+        {
+            seekHealTarget = target;
+            isSeekingHealTarget = true;
+            isCommittedToTarget = true; // Commit to this target
+            
+            if (debugMage)
+            {
+                Debug.Log($"Mage {gameObject.name} committed to heal target: {target.name}");
+            }
+        }
+    }
+
+    private void ClearSeekTarget()
+    {
+        if (isSeekingHealTarget || isCommittedToTarget)
+        {
+            if (debugMage && seekHealTarget != null)
+            {
+                Debug.Log($"Mage {gameObject.name} cleared commitment to {seekHealTarget.name}");
+            }
+            
+            seekHealTarget = null;
+            isSeekingHealTarget = false;
+            isCommittedToTarget = false; // Clear commitment
+            
+            // Clear AI movement target
+            if (villagerAI != null)
+            {
+                villagerAI.ClearCombatTarget();
+            }
+        }
+    }
+
+    private void UpdateHealSeeking()
+    {
+        if (!isSeekingHealTarget || seekHealTarget == null)
+        {
+            return;
+        }
+        
+        // Check if target is still valid and needs healing
+        bool targetStillNeedsHealing = false;
+        
+        // Check if it's a villager
+        Villager targetVillager = seekHealTarget.GetComponent<Villager>();
+        if (targetVillager != null)
+        {
+            VillagerHealth targetHealth = seekHealTarget.GetComponent<VillagerHealth>();
+            if (targetHealth != null && targetHealth.GetCurrentHP() < targetHealth.GetMaxHP())
+            {
+                targetStillNeedsHealing = true;
+            }
+        }
+        else
+        {
+            // Check if it's the player
+            PlayerHealth playerHealth = seekHealTarget.GetComponent<PlayerHealth>();
+            if (playerHealth != null && playerHealth.GetHealthPercentage() < 1f)
+            {
+                targetStillNeedsHealing = true;
+            }
+        }
+        
+        if (!targetStillNeedsHealing)
+        {
+            // Target no longer needs healing - clear commitment
+            ClearSeekTarget();
+            return;
+        }
+        
+        float distanceToTarget = Vector3.Distance(transform.position, seekHealTarget.position);
+        
+        // Check if we're now close enough to throw
+        if (distanceToTarget <= throwRange)
+        {
+            // We're in range now, let the normal potion throwing logic handle it
+            // Don't clear seek target here - let UpdatePotionThrowing handle the transition
+            return;
+        }
+        
+        // Check if target moved too far away (give up threshold should be larger than seek range)
+        if (distanceToTarget > healSeekRange * 1.5f)
+        {
+            // Target too far, give up commitment
+            if (debugMage)
+            {
+                Debug.Log($"Mage {gameObject.name} giving up on {seekHealTarget.name} - too far away ({distanceToTarget:F1})");
+            }
+            ClearSeekTarget();
+            return;
+        }
+        
+        // Move toward the target
+        if (villagerAI != null)
+        {
+            // Use AI to move toward heal target (mages don't attack, just move toward)
+            villagerAI.SetCombatTarget(seekHealTarget);
+        }
+        
+        if (debugMage && Time.frameCount % 60 == 0) // Log every 60 frames
+        {
+            Debug.Log($"Mage {gameObject.name} committed to healing {seekHealTarget.name} (distance: {distanceToTarget:F1})");
+        }
+    }
+
+    
+    private Transform FindHealTarget()
+    {
+        Transform bestTarget = null;
+        float lowestHealthRatio = 1f; // Only heal if below 100% health
+
+        // Find all villagers within throw range
+        Villager[] allVillagers = FindObjectsOfType<Villager>();
+
+        foreach (Villager v in allVillagers)
+        {
+            if (v == villager) continue; // Don't heal self
+            if (v.IsRebel() && !villager.IsRebel()) continue; // Loyals don't heal rebels
+            if (!v.IsRebel() && villager.IsRebel()) continue; // Rebels don't heal loyals
+
+            float distance = Vector3.Distance(transform.position, v.transform.position);
+            if (distance > throwRange) continue;
+
+            // Check health ratio
+            VillagerHealth vHealth = v.GetComponent<VillagerHealth>();
+            if (vHealth != null)
+            {
+                float healthRatio = (float)vHealth.GetCurrentHP() / vHealth.GetMaxHP();
+
                 if (healthRatio < lowestHealthRatio)
                 {
                     lowestHealthRatio = healthRatio;
@@ -375,7 +628,7 @@ public class MageCombat : VillagerCombat
                 }
             }
         }
-        
+
         return bestTarget;
     }
     
@@ -565,7 +818,17 @@ public class MageCombat : VillagerCombat
     public float GetFleeRange() => fleeRange;
     public float GetThrowRange() => throwRange;
     public float GetPotionProgress() => potionBar != null ? potionBar.value : 0f;
+    public bool IsCommittedToTarget() => isCommittedToTarget;
+
     
+    // Add these new public getters (around line 600 with other getters):
+
+    public bool IsSeekingHealTarget() => isSeekingHealTarget;
+    public Transform GetSeekHealTarget() => seekHealTarget;
+    public float GetDistanceToSeekTarget() => 
+        seekHealTarget != null ? Vector3.Distance(transform.position, seekHealTarget.position) : 0f;
+
+
     // Public setters for configuration
     public void SetFleeRange(float range)
     {
