@@ -86,81 +86,48 @@ public class DayNightCycleManager : MonoBehaviour
     private Vector3 mainPanelOriginalPos;
     
     // Events
-    public System.Action<bool> OnDayNightTransition;
     public System.Action OnDayStarted;
     public System.Action OnNightStarted;
-    
-    public static DayNightCycleManager Instance { get; private set; }
-    
-    private void Awake()
-    {
-        if (Instance != null && Instance != this)
-        {
-            Destroy(gameObject);
-            return;
-        }
-        Instance = this;
-    }
+    public System.Action<bool> OnDayNightTransition; // true = day, false = night
+    public System.Action<int> OnWaveStarted;
     
     private void Start()
     {
-        InitializeSystem();
-        SetupEventListeners();
+        InitializeManager();
+        // Start with a transition to night
+        StartNightTransition();
+    }
+    
+    private void InitializeManager()
+    {
         StoreOriginalPositions();
-        
-        // Start with night
-        SetupNightImmediate();
-    }
-    
-    private void InitializeSystem()
-    {
-        // Auto-find references if not assigned
-        if (globalLight == null)
-            globalLight = FindObjectOfType<Light2D>();
-            
-        if (waveSystem == null)
-            waveSystem = FindObjectOfType<EnemyWaveSystem>();
-            
-        if (villageManager == null)
-            villageManager = FindObjectOfType<VillageManager>();
-            
-        // Setup skip button
-        if (skipButton != null)
-        {
-            skipButton.onClick.AddListener(SkipToNight);
-        }
-        
-        // Enable manual wave control
-        if (waveSystem != null)
-        {
-            waveSystem.SetManualWaveControl(true);
-        }
-        
-        ValidateReferences();
-    }
-    
-    private void ValidateReferences()
-    {
-        if (globalLight == null)
-            Debug.LogError("DayNightCycleManager: No global Light2D found!");
-            
+        SetupEventListeners();
+        SetupSkipButton();
+        // Do not call SetupDayImmediate or SetupNightImmediate here; handled in Start()
+        if (debugTransitions)
+            Debug.Log("DayNightCycleManager initialized");
         if (waveSystem == null)
             Debug.LogError("DayNightCycleManager: No EnemyWaveSystem found!");
     }
     
     private void SetupEventListeners()
     {
-        // Listen to existing wave system events but don't let it auto-progress
         if (waveSystem != null)
         {
             waveSystem.OnWaveComplete += HandleWaveComplete;
-            // Don't listen to OnWaveStart since we'll control that
         }
         
-        // Listen to village manager events
         if (villageManager != null)
         {
             villageManager.OnDayNightCycle += HandleVillageManagerCycle;
+        }
+    }
+    
+    private void SetupSkipButton()
+    {
+        if (skipButton != null)
+        {
+            skipButton.onClick.AddListener(SkipToNight);
         }
     }
     
@@ -181,17 +148,12 @@ public class DayNightCycleManager : MonoBehaviour
         if (debugTransitions)
             Debug.Log($"Wave {waveNumber} completed, starting day transition");
         
-        // Update wave counter for next night
         currentWave = waveNumber + 1;
-        
-        // Transition to day for power allocation
         StartDayTransition();
     }
     
     private void HandleVillageManagerCycle(bool isNight)
     {
-        // This handles legacy VillageManager day/night events
-        // We don't need to do anything here since we're taking over control
         if (debugTransitions)
             Debug.Log($"VillageManager cycle event: isNight={isNight} (ignored - we control this now)");
     }
@@ -203,14 +165,12 @@ public class DayNightCycleManager : MonoBehaviour
     public void StartDayTransition()
     {
         if (isTransitioning) return;
-        
         StartCoroutine(TransitionToDay());
     }
     
     public void StartNightTransition()
     {
         if (isTransitioning) return;
-        
         StartCoroutine(TransitionToNight());
     }
     
@@ -235,20 +195,20 @@ public class DayNightCycleManager : MonoBehaviour
         if (debugTransitions)
             Debug.Log("Starting transition to day");
         
-        // 1. Wave section moves up and out
+        // 1. Simultaneously start lighting transition and wave section exit
+        TransitionLighting(true);
+        
         if (waveSection != null)
         {
             Vector3 exitPos = waveSectionOriginalPos + Vector3.up * uiSettings.waveTextOffsetY;
             waveSection.DOMove(exitPos, uiSettings.waveTextExitDuration)
-                      .SetEase(uiSettings.waveTextEase);
-            
-            yield return new WaitForSeconds(uiSettings.waveTextExitDuration * 0.5f);
+                      .SetEase(uiSettings.waveTextEase)
+                      .OnComplete(() => waveSection.gameObject.SetActive(false));
         }
         
-        // 2. Transition lighting to day
-        TransitionLighting(true);
+        yield return new WaitForSeconds(uiSettings.waveTextExitDuration * 0.5f);
         
-        // 3. Top area transitions down from above
+        // 2. Top area slides down from above with proper start position
         if (topArea != null)
         {
             Vector3 startPos = topAreaOriginalPos + Vector3.up * uiSettings.topAreaOffsetY;
@@ -259,13 +219,12 @@ public class DayNightCycleManager : MonoBehaviour
                    .SetEase(uiSettings.topAreaEase);
         }
         
-        // Small delay before main panel
         yield return new WaitForSeconds(0.3f);
         
-        // 4. Main panel transitions up from below
+        // 3. Main panel slides up from below with proper start position  
         if (mainPanel != null)
         {
-            Vector3 startPos = mainPanelOriginalPos + Vector3.up * uiSettings.mainPanelOffsetY;
+            Vector3 startPos = mainPanelOriginalPos + Vector3.down * Mathf.Abs(uiSettings.mainPanelOffsetY);
             mainPanel.position = startPos;
             mainPanel.gameObject.SetActive(true);
             
@@ -273,10 +232,10 @@ public class DayNightCycleManager : MonoBehaviour
                      .SetEase(uiSettings.mainPanelEase);
         }
         
-        // 5. Populate village stats and setup power allocation
+        // 4. Setup village UI with updated data
         PopulateVillageUI();
         
-        // 6. Start day timer
+        // 5. Start day timer
         dayTimeRemaining = dayDuration;
         dayTimerCoroutine = StartCoroutine(DayTimer());
         
@@ -298,22 +257,22 @@ public class DayNightCycleManager : MonoBehaviour
         if (debugTransitions)
             Debug.Log("Starting transition to night");
         
-        // Stop day timer
         if (dayTimerCoroutine != null)
         {
             StopCoroutine(dayTimerCoroutine);
             dayTimerCoroutine = null;
         }
         
-        // 1. Setup wave section behind main panel with updated enemy counts
+        // 1. Setup wave section at center position using RectTransform
         if (waveSection != null)
         {
             UpdateWaveSectionText();
-            
-            waveSection.position = waveSectionOriginalPos;
+            RectTransform waveRect = waveSection as RectTransform;
+            if (waveRect != null)
+            {
+                waveRect.anchoredPosition = new Vector2(0f, -130f);
+            }
             waveSection.gameObject.SetActive(true);
-            
-            // Ensure it's behind the main panel initially
             Canvas waveCanvas = waveSection.GetComponent<Canvas>();
             Canvas mainCanvas = mainPanel != null ? mainPanel.GetComponent<Canvas>() : null;
             if (waveCanvas != null && mainCanvas != null)
@@ -322,44 +281,43 @@ public class DayNightCycleManager : MonoBehaviour
             }
         }
         
-        // 2. Main panel collapses down
+        // 2. Simultaneously start lighting transition and UI exit
+        TransitionLighting(false);
+        
+        // Main panel slides down
         if (mainPanel != null)
         {
-            Vector3 exitPos = mainPanelOriginalPos + Vector3.up * uiSettings.mainPanelOffsetY;
+            Vector3 exitPos = mainPanelOriginalPos + Vector3.down * Mathf.Abs(uiSettings.mainPanelOffsetY);
             mainPanel.DOMove(exitPos, uiSettings.mainPanelExitDuration)
                      .SetEase(uiSettings.mainPanelEase)
                      .OnComplete(() => mainPanel.gameObject.SetActive(false));
         }
         
-        // 3. Top area moves up and out
+        // Top area slides up
         if (topArea != null)
         {
             Vector3 exitPos = topAreaOriginalPos + Vector3.up * uiSettings.topAreaOffsetY;
-            topArea.DOMove(exitPos, uiSettings.waveTextExitDuration)
-                   .SetEase(uiSettings.waveTextEase)
+            topArea.DOMove(exitPos, uiSettings.mainPanelExitDuration)
+                   .SetEase(uiSettings.topAreaEase)
                    .OnComplete(() => topArea.gameObject.SetActive(false));
         }
         
         yield return new WaitForSeconds(uiSettings.mainPanelExitDuration);
         
-        // 4. Wave section stays in center briefly
+        // 3. Wave section displays in center
         yield return new WaitForSeconds(uiSettings.waveTextCenterDisplayTime);
         
-        // 5. Wave section moves to top left
+        // 4. Wave section moves to top left (original position)
         if (waveSection != null)
         {
-            Vector3 topLeftPos = GetWaveSectionTopLeftPosition();
-            waveSection.DOMove(topLeftPos, uiSettings.waveTextEnterDuration)
+            waveSection.DOMove(waveSectionOriginalPos, uiSettings.waveTextEnterDuration)
                       .SetEase(uiSettings.waveTextEase);
         }
         
-        // 6. Transition lighting to night
-        TransitionLighting(false);
-        
-        // 7. Start the wave once night transition is complete
-        StartCoroutine(StartWaveAfterTransition());
-        
         yield return new WaitForSeconds(uiSettings.waveTextEnterDuration);
+        
+        // 5. Start wave after positioning is complete
+        StartCoroutine(StartWaveAfterTransition());
         
         isTransitioning = false;
         OnNightStarted?.Invoke();
@@ -371,15 +329,11 @@ public class DayNightCycleManager : MonoBehaviour
     
     private IEnumerator StartWaveAfterTransition()
     {
-        yield return new WaitForSeconds(uiSettings.waveTextEnterDuration);
+        yield return new WaitForSeconds(0.2f);
         
-        // Now start the wave through the wave system
         if (waveSystem != null)
         {
-            // Re-enable wave system and manually start the wave
             waveSystem.enabled = true;
-            
-            // Use reflection or a new public method to start specific wave
             StartWaveManually();
             
             if (debugTransitions)
@@ -395,28 +349,32 @@ public class DayNightCycleManager : MonoBehaviour
         }
     }
     
-    private void SetupNightImmediate()
+    private void SetupDayImmediate()
     {
-        isDay = false;
+        isDay = true;
         
-        // Set night lighting immediately
         if (globalLight != null)
         {
-            globalLight.color = lightingSettings.nightColor;
-            globalLight.intensity = lightingSettings.nightIntensity;
+            globalLight.color = lightingSettings.dayColor;
+            globalLight.intensity = lightingSettings.dayIntensity;
         }
         
-        // Position UI elements for night
-        if (topArea != null)
-            topArea.gameObject.SetActive(false);
-        if (mainPanel != null)
-            mainPanel.gameObject.SetActive(false);
         if (waveSection != null)
+            waveSection.gameObject.SetActive(false);
+        if (topArea != null)
         {
-            waveSection.gameObject.SetActive(true);
-            waveSection.position = GetWaveSectionTopLeftPosition();
-            UpdateWaveSectionText(); // Initialize with wave 1 data
+            topArea.gameObject.SetActive(true);
+            topArea.position = topAreaOriginalPos;
         }
+        if (mainPanel != null)
+        {
+            mainPanel.gameObject.SetActive(true);
+            mainPanel.position = mainPanelOriginalPos;
+        }
+        
+        PopulateVillageUI();
+        dayTimeRemaining = dayDuration;
+        dayTimerCoroutine = StartCoroutine(DayTimer());
     }
     
     #endregion
@@ -430,7 +388,10 @@ public class DayNightCycleManager : MonoBehaviour
         Color targetColor = toDay ? lightingSettings.dayColor : lightingSettings.nightColor;
         float targetIntensity = toDay ? lightingSettings.dayIntensity : lightingSettings.nightIntensity;
         
-        DOTween.To(() => globalLight.color, x => globalLight.color = x, targetColor, lightingSettings.lightTransitionDuration)
+        DOTween.To(() => globalLight.color,
+                   x => globalLight.color = x,
+                   targetColor,
+                   lightingSettings.lightTransitionDuration)
                .SetEase(lightingSettings.lightTransitionEase);
         
         DOTween.To(() => globalLight.intensity, 
@@ -442,106 +403,67 @@ public class DayNightCycleManager : MonoBehaviour
     
     #endregion
     
-    #region Village UI Population
+    #region UI Population and Updates
     
     private void PopulateVillageUI()
     {
-        if (debugTransitions)
-            Debug.Log("Populating village UI");
-        
-        // Process the start of day cycle in village manager
-        if (villageManager != null)
-        {
-            villageManager.ProcessDayCycle();
-        }
-        
-        PopulateRulerSection();
-        PopulateVillagerCards();
-        UpdateFoodProduction();
-        UpdatePowerTotals();
-        
-        // Trigger VillagePowerAllocationUI to refresh
         if (VillagePowerAllocationUI.Instance != null)
         {
             VillagePowerAllocationUI.Instance.RefreshAllUI();
         }
-    }
-    
-    private void PopulateRulerSection()
-    {
-        // Update ruler power, damage, and health info
-        // This connects to the existing power system
+        
+        UpdateCountdownDisplay();
+        
         if (debugTransitions)
-            Debug.Log("Populating ruler section");
+            Debug.Log("Village UI populated with current data");
     }
     
-    private void PopulateVillagerCards()
+    private void UpdateCountdownDisplay()
     {
-        if (villagerContainer == null) return;
-        
-        // Get villagers from VillageManager instead of finding them manually
-        List<Villager> allVillagers = new List<Villager>();
-        
-        if (villageManager != null)
+        if (countdownText != null && isDay)
         {
-            allVillagers = villageManager.GetVillagers();
+            int minutes = Mathf.FloorToInt(dayTimeRemaining / 60);
+            int seconds = Mathf.FloorToInt(dayTimeRemaining % 60);
+            countdownText.text = $"{minutes:00}:{seconds:00}";
         }
-        else
-        {
-            // Fallback to finding villagers in scene
-            allVillagers.AddRange(FindObjectsOfType<Villager>());
-        }
+    }
+    
+    private void UpdateWaveSectionText()
+    {
+        if (nightText != null)
+            nightText.text = $"Night {currentWave}";
         
-        // Sort villagers: Captain, Mage, Farmer first (purple names), then others
-        allVillagers.Sort((a, b) => {
-            int GetPriority(VillagerRole role)
+        if (waveSystem != null)
+        {
+            // Get the composition for the upcoming wave
+            var enemyCounts = waveSystem.GetNextWaveComposition();
+            
+            if (ghostText != null)
             {
-                switch (role)
-                {
-                    case VillagerRole.Captain: return 0;
-                    case VillagerRole.Mage: return 1;
-                    case VillagerRole.Farmer: return 2;
-                    default: return 3;
-                }
+                int ghostCount = 0;
+                // Check for various possible ghost names
+                if (enemyCounts.ContainsKey("Ghost"))
+                    ghostCount += enemyCounts["Ghost"];
+                if (enemyCounts.ContainsKey("ghost"))
+                    ghostCount += enemyCounts["ghost"];
+                
+                ghostText.text = $"X {ghostCount}";
             }
             
-            return GetPriority(a.GetRole()).CompareTo(GetPriority(b.GetRole()));
-        });
-        
-        // Update villager UI cards with stats
-        for (int i = 0; i < allVillagers.Count; i++)
-        {
-            UpdateVillagerCard(allVillagers[i], i);
+            if (ghostMageText != null)
+            {
+                int ghostMageCount = 0;
+                // Check for various possible ghost mage names
+                if (enemyCounts.ContainsKey("Ghost Mage"))
+                    ghostMageCount += enemyCounts["Ghost Mage"];
+                if (enemyCounts.ContainsKey("GhostMage"))
+                    ghostMageCount += enemyCounts["GhostMage"];
+                if (enemyCounts.ContainsKey("ghost mage"))
+                    ghostMageCount += enemyCounts["ghost mage"];
+                
+                ghostMageText.text = $"X {ghostMageCount}";
+            }
         }
-        
-        if (debugTransitions)
-            Debug.Log($"Populated {allVillagers.Count} villager cards");
-    }
-    
-    private void UpdateVillagerCard(Villager villager, int index)
-    {
-        // This should update the individual villager UI card
-        // The VillagePowerAllocationUI handles this automatically
-        if (debugTransitions)
-            Debug.Log($"Updated villager card for {villager.GetRole()} at index {index}");
-    }
-    
-    private void UpdateFoodProduction()
-    {
-        if (villageManager != null)
-        {
-            int foodProduction = villageManager.CalculateFoodProduction();
-            if (debugTransitions)
-                Debug.Log($"Food production: {foodProduction}");
-        }
-    }
-    
-    private void UpdatePowerTotals()
-    {
-        // Update total power and unallocated power displays
-        // This is handled by the VillagePowerAllocationUI system
-        if (debugTransitions)
-            Debug.Log("Updated power totals");
     }
     
     #endregion
@@ -550,27 +472,27 @@ public class DayNightCycleManager : MonoBehaviour
     
     private IEnumerator DayTimer()
     {
-        while (dayTimeRemaining > 0)
+        while (dayTimeRemaining > 0 && isDay)
         {
             dayTimeRemaining -= Time.deltaTime;
             UpdateCountdownDisplay();
             yield return null;
         }
         
-        // Day time ended, process end-of-day and transition to night
-        ProcessEndOfDay();
-        StartNightTransition();
+        if (isDay)
+        {
+            ProcessEndOfDay();
+            StartNightTransition();
+        }
     }
     
     private void ProcessEndOfDay()
     {
         if (debugTransitions)
-            Debug.Log("Processing end of day - applying power allocations and distributing food");
+            Debug.Log("Processing end of day - applying power allocations");
         
-        // Apply power allocations made during the day
         ApplyPowerAllocations();
         
-        // Process night cycle in village manager (food distribution, etc.)
         if (villageManager != null)
         {
             villageManager.ProcessNightCycle();
@@ -579,34 +501,9 @@ public class DayNightCycleManager : MonoBehaviour
     
     private void ApplyPowerAllocations()
     {
-        // Get all current power allocations from the UI and apply them
         if (VillagePowerAllocationUI.Instance != null)
         {
-            // The power allocation UI should handle finalizing allocations
-            // This triggers discontent calculations based on power given vs. needed
-            if (debugTransitions)
-                Debug.Log("Applied power allocations - discontent will be calculated");
-        }
-        
-        // Get all villagers and process their power allocation effects
-        if (villageManager != null)
-        {
-            var villagers = villageManager.GetVillagers();
-            foreach (var villager in villagers)
-            {
-                // This triggers the discontent calculation in each villager
-                villager.ProcessDiscontentAtAllocation();
-            }
-        }
-    }
-    
-    private void UpdateCountdownDisplay()
-    {
-        if (countdownText != null)
-        {
-            int minutes = Mathf.FloorToInt(dayTimeRemaining / 60);
-            int seconds = Mathf.FloorToInt(dayTimeRemaining % 60);
-            countdownText.text = $"{minutes:00}:{seconds:00}";
+            VillagePowerAllocationUI.Instance.ApplyAllPowerAllocations();
         }
     }
     
@@ -614,135 +511,28 @@ public class DayNightCycleManager : MonoBehaviour
     
     #region Utility Methods
     
-    private Vector3 GetWaveSectionTopLeftPosition()
+    private Vector3 GetScreenCenterPosition()
     {
-        // Calculate top-left position for wave section
-        Camera cam = Camera.main;
-        if (cam != null)
+        if (mainPanel != null)
         {
-            Vector3 screenPos = new Vector3(100, Screen.height - 100, 10);
-            return cam.ScreenToWorldPoint(screenPos);
-        }
-        return waveSectionOriginalPos + Vector3.up * 4 + Vector3.left * 6;
-    }
-    
-    private void UpdateWaveSectionText()
-    {
-        // Update the three text components with current wave data
-        if (nightText != null)
-        {
-            nightText.text = $"NIGHT {currentWave}";
-        }
-        
-        // Get enemy counts from wave system
-        var enemyCounts = GetCurrentWaveEnemyCounts();
-        
-        if (ghostText != null)
-        {
-            int ghostCount = enemyCounts.ContainsKey("Ghost") ? enemyCounts["Ghost"] : 0;
-            ghostText.text = ghostCount.ToString();
-        }
-        
-        if (ghostMageText != null)
-        {
-            int ghostMageCount = enemyCounts.ContainsKey("GhostMage") ? enemyCounts["GhostMage"] : 0;
-            ghostMageText.text = ghostMageCount.ToString();
-        }
-        
-        if (debugTransitions)
-        {
-            Debug.Log($"Updated wave section for Night {currentWave}: Ghosts={ghostText?.text}, GhostMages={ghostMageText?.text}");
-        }
-    }
-    
-    private System.Collections.Generic.Dictionary<string, int> GetCurrentWaveEnemyCounts()
-    {
-        var enemyCounts = new System.Collections.Generic.Dictionary<string, int>();
-        
-        if (waveSystem != null)
-        {
-            // Get actual wave composition from the wave system
-            enemyCounts = waveSystem.GetNextWaveComposition();
-            
-            if (debugTransitions)
+            Canvas canvas = mainPanel.GetComponent<Canvas>();
+            if (canvas != null)
             {
-                Debug.Log($"Wave {currentWave} composition:");
-                foreach (var kvp in enemyCounts)
-                {
-                    Debug.Log($"  {kvp.Key}: {kvp.Value}");
-                }
+                return Vector3.zero; // Center for UI Canvas
             }
         }
-        else
-        {
-            // Fallback values for testing
-            enemyCounts["Ghost"] = 5;
-            enemyCounts["GhostMage"] = 2;
-        }
-        
-        return enemyCounts;
+        return Vector3.zero;
     }
-    
-    #endregion
-    
-    #region Public Interface
-    
-    public bool IsDay() => isDay;
-    public bool IsTransitioning() => isTransitioning;
-    public float GetDayTimeRemaining() => dayTimeRemaining;
-    public int GetCurrentWave() => currentWave;
-    
+
     public void SetDayDuration(float duration)
     {
         dayDuration = duration;
     }
     
-    public void ForceTransitionToDay()
-    {
-        if (!isTransitioning)
-            StartDayTransition();
-    }
-    
-    public void ForceTransitionToNight()
-    {
-        if (!isTransitioning)
-            StartNightTransition();
-    }
+    public int GetCurrentWave() => currentWave;
+    public bool IsDay() => isDay;
+    public bool IsTransitioning() => isTransitioning;
+    public float GetDayTimeRemaining() => dayTimeRemaining;
     
     #endregion
-    
-    private void OnDestroy()
-    {
-        // Clean up DOTween sequences
-        DOTween.Kill(this);
-        
-        // Unsubscribe from events
-        if (waveSystem != null)
-        {
-            waveSystem.OnWaveComplete -= HandleWaveComplete;
-        }
-    }
-    
-    #if UNITY_EDITOR
-    [ContextMenu("Test Day Transition")]
-    private void TestDayTransition()
-    {
-        if (Application.isPlaying)
-            StartDayTransition();
-    }
-    
-    [ContextMenu("Test Night Transition")]
-    private void TestNightTransition()
-    {
-        if (Application.isPlaying)
-            StartNightTransition();
-    }
-    
-    [ContextMenu("Skip to Night")]
-    private void TestSkipToNight()
-    {
-        if (Application.isPlaying)
-            SkipToNight();
-    }
-    #endif
 }

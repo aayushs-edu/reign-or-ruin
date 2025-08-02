@@ -56,6 +56,8 @@ public class VillageSummaryUI
 
 public class VillagePowerAllocationUI : MonoBehaviour
 {
+    public static VillagePowerAllocationUI Instance { get; private set; }
+    
     [Header("UI Sections")]
     [SerializeField] private RulerSectionUI rulerSection;
     [SerializeField] private VillageSummaryUI villageSummary;
@@ -63,106 +65,87 @@ public class VillagePowerAllocationUI : MonoBehaviour
     
     [Header("Card Configuration")]
     [SerializeField] private Transform villagerCardContainer;
-    [SerializeField] private GameObject villagerCardPrefab; // Should have VillagerCard component
     [SerializeField] private int maxVillagerCards = 8;
-    [SerializeField] private int powerIncrement = 2;
     
-    [Header("Power Requirements")]
-    [SerializeField] private int thunderDashRequirement = 35;
-    [SerializeField] private int beamOfOrderRequirement = 250;
-    [SerializeField] private int emperorsWrathRequirement = 500;
-    
-    [Header("References")]
+    [Header("Village System References")]
     [SerializeField] private VillageManager villageManager;
-    [SerializeField] private PowerSystem powerSystem;
+    
+    [Header("Settings")]
+    [SerializeField] private bool debugCardUpdates = false;
+    [SerializeField] private float updateInterval = 0.1f; // Update frequency for status bars
     
     // Internal state
     private List<Villager> currentVillagers = new List<Villager>();
     private Dictionary<Villager, VillagerCardUI> villagerToCardMap = new Dictionary<Villager, VillagerCardUI>();
+    private Coroutine statusUpdateCoroutine;
     private int playerAllocatedPower = 0;
-    private bool isUIActive = false;
-    
-    public static VillagePowerAllocationUI Instance { get; private set; }
     
     private void Awake()
     {
-        if (Instance != null && Instance != this)
+        if (Instance == null)
+        {
+            Instance = this;
+        }
+        else
         {
             Destroy(gameObject);
             return;
         }
-        Instance = this;
     }
     
     private void Start()
     {
-        InitializeReferences();
-        SetupEventListeners();
-        InitializeCards();
-        
-        // Start inactive
-        gameObject.SetActive(false);
+        InitializeUI();
     }
     
-    private void InitializeReferences()
+    private void OnEnable()
     {
-        if (villageManager == null)
-            villageManager = FindObjectOfType<VillageManager>();
-        if (powerSystem == null)
-            powerSystem = FindObjectOfType<PowerSystem>();
+        // Start status update coroutine for real-time updates
+        if (statusUpdateCoroutine == null)
+            statusUpdateCoroutine = StartCoroutine(StatusUpdateLoop());
     }
     
-    private void SetupEventListeners()
+    private void OnDisable()
     {
-        // Listen to day/night cycle
-        if (DayNightCycleManager.Instance != null)
+        // Stop status update coroutine
+        if (statusUpdateCoroutine != null)
         {
-            DayNightCycleManager.Instance.OnDayStarted += ShowUI;
-            DayNightCycleManager.Instance.OnNightStarted += HideUI;
+            StopCoroutine(statusUpdateCoroutine);
+            statusUpdateCoroutine = null;
         }
-        
-        // Setup ruler section buttons
-        if (rulerSection.addRulerPowerButton != null)
-            rulerSection.addRulerPowerButton.onClick.AddListener(() => ModifyRulerPower(powerIncrement));
-        if (rulerSection.removeRulerPowerButton != null)
-            rulerSection.removeRulerPowerButton.onClick.AddListener(() => ModifyRulerPower(-powerIncrement));
-            
-        // Setup ability buttons
-        if (rulerSection.thunderDashButton != null)
-            rulerSection.thunderDashButton.onClick.AddListener(() => AllocateToAbility("ThunderDash", thunderDashRequirement));
-        if (rulerSection.beamOfOrderButton != null)
-            rulerSection.beamOfOrderButton.onClick.AddListener(() => AllocateToAbility("BeamOfOrder", beamOfOrderRequirement));
-        if (rulerSection.emperorsWrathButton != null)
-            rulerSection.emperorsWrathButton.onClick.AddListener(() => AllocateToAbility("EmperorsWrath", emperorsWrathRequirement));
     }
     
-    private void InitializeCards()
+    private void InitializeUI()
     {
-        // Initialize existing cards or create new ones
         if (villagerCards == null || villagerCards.Length == 0)
         {
-            CreateVillagerCards();
+            SetupCardsFromContainer();
         }
         else
         {
             SetupExistingCards();
         }
+        
+        SetupRulerSection();
+        RefreshAllUI();
+        
+        if (debugCardUpdates)
+            Debug.Log($"VillagePowerAllocationUI initialized with {villagerCards.Length} cards");
     }
     
-    private void CreateVillagerCards()
+    private void SetupCardsFromContainer()
     {
-        if (villagerCardPrefab == null || villagerCardContainer == null) return;
+        if (villagerCardContainer == null) return;
         
-        villagerCards = new VillagerCardUI[maxVillagerCards];
+        VillagerCard[] cardComponents = villagerCardContainer.GetComponentsInChildren<VillagerCard>(true);
+        villagerCards = new VillagerCardUI[Mathf.Min(cardComponents.Length, maxVillagerCards)];
         
-        for (int i = 0; i < maxVillagerCards; i++)
+        for (int i = 0; i < villagerCards.Length; i++)
         {
-            GameObject cardObj = Instantiate(villagerCardPrefab, villagerCardContainer);
-            VillagerCard cardComponent = cardObj.GetComponent<VillagerCard>();
-            
+            VillagerCard cardComponent = cardComponents[i];
             if (cardComponent == null)
             {
-                Debug.LogError($"VillagerCard prefab missing VillagerCard component! {cardObj.name}");
+                Debug.LogWarning($"Missing VillagerCard component on card {i}");
                 continue;
             }
             
@@ -170,12 +153,8 @@ public class VillagePowerAllocationUI : MonoBehaviour
             cardUI.villagerCard = cardComponent;
             cardUI.cardIndex = i;
             
-            // Setup event listeners
             cardComponent.OnPowerChanged += (card, newPower) => OnCardPowerChanged(i, newPower);
-            
             villagerCards[i] = cardUI;
-            
-            // Initially hide all cards
             cardComponent.HideCard();
         }
     }
@@ -187,12 +166,214 @@ public class VillagePowerAllocationUI : MonoBehaviour
             if (villagerCards[i].villagerCard != null)
             {
                 villagerCards[i].cardIndex = i;
-                
-                // Setup event listeners
                 villagerCards[i].villagerCard.OnPowerChanged += (card, newPower) => OnCardPowerChanged(i, newPower);
             }
         }
     }
+    
+    private void SetupRulerSection()
+    {
+        if (rulerSection.rulerPowerSlider != null)
+            rulerSection.rulerPowerSlider.onValueChanged.AddListener(OnRulerPowerChanged);
+        
+        if (rulerSection.addRulerPowerButton != null)
+            rulerSection.addRulerPowerButton.onClick.AddListener(() => ModifyRulerPower(1));
+        
+        if (rulerSection.removeRulerPowerButton != null)
+            rulerSection.removeRulerPowerButton.onClick.AddListener(() => ModifyRulerPower(-1));
+    }
+    
+    #region Status Update Loop
+    
+    private System.Collections.IEnumerator StatusUpdateLoop()
+    {
+        while (true)
+        {
+            yield return new WaitForSeconds(updateInterval);
+            
+            // Update only status bars for performance
+            UpdateVillagerCardStatus();
+        }
+    }
+    
+    private void UpdateVillagerCardStatus()
+    {
+        foreach (var cardUI in villagerCards)
+        {
+            if (cardUI.villagerCard.HasVillager())
+            {
+                cardUI.villagerCard.UpdateStatusOnly();
+            }
+        }
+    }
+    
+    #endregion
+    
+    #region Public Interface
+    
+    public void RefreshAllUI()
+    {
+        RefreshVillagerList();
+        UpdateVillagerCards();
+        UpdateVillageSummary();
+        UpdateRulerSection();
+        
+        if (debugCardUpdates)
+            Debug.Log("RefreshAllUI completed");
+    }
+    
+    public void UpdateVillagerCardsPowerOnly()
+    {
+        foreach (var cardUI in villagerCards)
+        {
+            if (cardUI.villagerCard.HasVillager())
+            {
+                cardUI.villagerCard.UpdatePowerOnly();
+            }
+        }
+        
+        UpdateVillageSummary();
+    }
+    
+    public void ApplyAllPowerAllocations()
+    {
+        foreach (var cardUI in villagerCards)
+        {
+            if (cardUI.assignedVillager != null)
+            {
+                // Power allocations are already applied through the card events
+                // This method can trigger additional processing if needed
+                if (debugCardUpdates)
+                    Debug.Log($"Applied power allocation for {cardUI.assignedVillager.GetRole()}");
+            }
+        }
+    }
+    
+    #endregion
+    
+    private void RefreshVillagerList()
+    {
+        currentVillagers.Clear();
+        villagerToCardMap.Clear();
+        
+        if (villageManager != null)
+        {
+            var allVillagers = villageManager.GetVillagers();
+            currentVillagers.AddRange(allVillagers);
+            
+            if (debugCardUpdates)
+                Debug.Log($"Found {currentVillagers.Count} villagers");
+        }
+    }
+    
+    private void UpdateVillagerCards()
+    {
+        // Hide all cards first
+        foreach (var cardUI in villagerCards)
+        {
+            cardUI.villagerCard.HideCard();
+            cardUI.assignedVillager = null;
+        }
+
+        // Assign villagers to cards and update all data fields
+        for (int i = 0; i < Mathf.Min(currentVillagers.Count, villagerCards.Length); i++)
+        {
+            Villager villager = currentVillagers[i];
+            VillagerCardUI cardUI = villagerCards[i];
+            cardUI.assignedVillager = villager;
+            cardUI.cardIndex = i;
+            cardUI.villagerCard.cardIndex = i;
+            cardUI.villagerCard.UpdateCard(villager);
+            villagerToCardMap[villager] = cardUI;
+            if (debugCardUpdates)
+                Debug.Log($"Updated card {i} for {villager.GetRole()} ({villager.name})");
+        }
+    }
+    
+    private void UpdateVillageSummary()
+    {
+        if (villageSummary == null) return;
+        
+        // Food production - use actual VillageManager method
+        int foodProduction = villageManager != null ? villageManager.CalculateFoodProduction() : 0;
+        if (villageSummary.foodProductionText != null)
+            villageSummary.foodProductionText.text = $"{foodProduction}";
+        
+        // Power totals - use actual PowerSystem if available
+        int totalPower = GetTotalPower();
+        int unallocatedPower = GetUnallocatedPower();
+        
+        if (villageSummary.totalPowerText != null)
+            villageSummary.totalPowerText.text = $"{totalPower}";
+        if (villageSummary.unallocatedPowerText != null)
+            villageSummary.unallocatedPowerText.text = $"{unallocatedPower}";
+        
+        // Villager counts
+        int totalVillagers = currentVillagers.Count;
+        int rebelCount = currentVillagers.Count(v => v.IsRebel());
+        
+        if (villageSummary.villagerCountText != null)
+            villageSummary.villagerCountText.text = $"{totalVillagers}";
+        if (villageSummary.rebelCountText != null)
+            villageSummary.rebelCountText.text = $"{rebelCount}";
+        
+        // Update visual bars
+        UpdateSummaryBars(foodProduction, totalPower, unallocatedPower);
+    }
+    
+    private void UpdateSummaryBars(int foodProduction, int totalPower, int unallocatedPower)
+    {
+        if (villageSummary.foodProductionBar != null)
+        {
+            float foodRatio = Mathf.Clamp01(foodProduction / 20f); // Assuming max 20 food
+            villageSummary.foodProductionBar.fillAmount = foodRatio;
+            villageSummary.foodProductionBar.color = GetSummaryBarColor(foodRatio);
+        }
+        
+        if (villageSummary.powerAllocationBar != null)
+        {
+            float allocationRatio = totalPower > 0 ? (float)(totalPower - unallocatedPower) / totalPower : 0f;
+            villageSummary.powerAllocationBar.fillAmount = allocationRatio;
+            villageSummary.powerAllocationBar.color = GetSummaryBarColor(allocationRatio);
+        }
+    }
+    
+    private Color GetSummaryBarColor(float ratio)
+    {
+        if (ratio >= 0.7f)
+            return villageSummary.goodColor;
+        else if (ratio >= 0.4f)
+            return villageSummary.warningColor;
+        else
+            return villageSummary.dangerColor;
+    }
+    
+    private void UpdateRulerSection()
+    {
+        if (rulerSection == null) return;
+        
+        if (rulerSection.powerAllocatedText != null)
+            rulerSection.powerAllocatedText.text = $"{playerAllocatedPower}";
+        
+        if (rulerSection.rulerPowerSlider != null)
+            rulerSection.rulerPowerSlider.value = playerAllocatedPower;
+        
+        // Update ability costs and availability
+        UpdateRulerAbilities();
+    }
+    
+    private void UpdateRulerAbilities()
+    {
+        // Basic ability cost displays
+        if (rulerSection.thunderDashCostText != null)
+            rulerSection.thunderDashCostText.text = "Cost: 2";
+        if (rulerSection.beamCostText != null)
+            rulerSection.beamCostText.text = "Cost: 3";
+        if (rulerSection.wrathCostText != null)
+            rulerSection.wrathCostText.text = "Cost: 5";
+    }
+    
+    #region Event Handlers
     
     private void OnCardPowerChanged(int cardIndex, int newPower)
     {
@@ -204,7 +385,7 @@ public class VillagePowerAllocationUI : MonoBehaviour
         VillagerStats stats = cardUI.assignedVillager.GetStats();
         int difference = newPower - stats.power;
         
-        // Check if we have enough unallocated power for increases
+        // Check power constraints
         if (difference > 0 && GetUnallocatedPower() < difference) 
         {
             // Reset the card to current power (invalid change)
@@ -212,219 +393,40 @@ public class VillagePowerAllocationUI : MonoBehaviour
             return;
         }
         
-        // Apply the change
+        // Apply the change using existing Villager method
         cardUI.assignedVillager.AllocatePower(newPower);
         
-        // Refresh all UI
-        RefreshAllUI();
-    }
-    
-    #region UI Show/Hide
-    
-    private void ShowUI()
-    {
-        isUIActive = true;
-        gameObject.SetActive(true);
-        RefreshAllUI();
-    }
-    
-    private void HideUI()
-    {
-        isUIActive = false;
-        gameObject.SetActive(false);
-    }
-    
-    #endregion
-    
-    #region UI Population
-    
-    public void RefreshAllUI()
-    {
-        if (!isUIActive) return;
+        // Refresh UI
+        UpdateVillagerCardsPowerOnly();
         
-        PopulateVillagerCards();
+        if (debugCardUpdates)
+            Debug.Log($"Power changed for {cardUI.assignedVillager.GetRole()}: {stats.power} -> {newPower}");
+    }
+    
+    private void OnRulerPowerChanged(float value)
+    {
+        int newPower = Mathf.RoundToInt(value);
+        
+        // Check if we have enough unallocated power
+        int difference = newPower - playerAllocatedPower;
+        if (difference > 0 && GetUnallocatedPower() < difference)
+            return;
+        
+        playerAllocatedPower = newPower;
+        UpdateVillageSummary();
+    }
+    
+    private void ModifyRulerPower(int amount)
+    {
+        int newPower = Mathf.Max(0, playerAllocatedPower + amount);
+        
+        // Check if we have enough unallocated power for increases
+        if (amount > 0 && GetUnallocatedPower() < amount)
+            return;
+        
+        playerAllocatedPower = newPower;
         UpdateRulerSection();
         UpdateVillageSummary();
-        UpdateAllCardConstraints();
-    }
-    
-    private void PopulateVillagerCards()
-    {
-        // Get all villagers in scene
-        Villager[] allVillagers = FindObjectsOfType<Villager>();
-        currentVillagers.Clear();
-        villagerToCardMap.Clear();
-        
-        // Sort villagers: Captain, Mage, Farmer first, then others
-        var sortedVillagers = allVillagers.OrderBy(v => GetRolePriority(v.GetRole())).ToArray();
-        
-        // Populate cards
-        for (int i = 0; i < villagerCards.Length; i++)
-        {
-            if (i < sortedVillagers.Length)
-            {
-                SetupVillagerCard(villagerCards[i], sortedVillagers[i]);
-                currentVillagers.Add(sortedVillagers[i]);
-                villagerToCardMap[sortedVillagers[i]] = villagerCards[i];
-            }
-            else
-            {
-                // Hide unused cards
-                villagerCards[i].villagerCard.HideCard();
-                villagerCards[i].assignedVillager = null;
-            }
-        }
-    }
-    
-    private int GetRolePriority(VillagerRole role)
-    {
-        switch (role)
-        {
-            case VillagerRole.Captain: return 0;
-            case VillagerRole.Mage: return 1;
-            case VillagerRole.Farmer: return 2;
-            case VillagerRole.Builder: return 3;
-            case VillagerRole.Commoner: return 4;
-            default: return 5;
-        }
-    }
-    
-    private void SetupVillagerCard(VillagerCardUI cardUI, Villager villager)
-    {
-        cardUI.assignedVillager = villager;
-        
-        // Update the card component with villager data
-        cardUI.villagerCard.UpdateCard(villager);
-        
-        // Update power constraints based on available power
-        int unallocatedPower = GetUnallocatedPower();
-        VillagerStats stats = villager.GetStats();
-        
-        bool canAddPower = stats.power < 4 && unallocatedPower >= powerIncrement;
-        bool canRemovePower = stats.power > 0;
-        
-        cardUI.villagerCard.SetPowerConstraints(canAddPower, canRemovePower);
-    }
-    
-    #endregion
-    
-    #region Ruler Section
-    
-    private void UpdateRulerSection()
-    {
-        if (rulerSection.powerAllocatedText != null)
-            rulerSection.powerAllocatedText.text = $"{playerAllocatedPower}";
-            
-        if (rulerSection.currentDamageText != null)
-        {
-            float damage = CalculatePlayerDamage(playerAllocatedPower);
-            rulerSection.currentDamageText.text = $"{damage:F1}";
-        }
-        
-        if (rulerSection.healthGainText != null)
-        {
-            float healthGain = CalculatePlayerHealthGain(playerAllocatedPower);
-            rulerSection.healthGainText.text = $"+{healthGain:F1} / night";
-        }
-        
-        if (rulerSection.rulerPowerSlider != null)
-        {
-            rulerSection.rulerPowerSlider.value = playerAllocatedPower;
-        }
-        
-        // Update ability buttons
-        UpdateAbilityButtons();
-        
-        // Update ruler power buttons
-        bool canAddRulerPower = GetUnallocatedPower() >= powerIncrement;
-        bool canRemoveRulerPower = playerAllocatedPower > 0;
-        
-        if (rulerSection.addRulerPowerButton != null)
-            rulerSection.addRulerPowerButton.interactable = canAddRulerPower;
-        if (rulerSection.removeRulerPowerButton != null)
-            rulerSection.removeRulerPowerButton.interactable = canRemoveRulerPower;
-    }
-    
-    private void UpdateAbilityButtons()
-    {
-        int totalPlayerPower = playerAllocatedPower; // This should include accumulated power
-        
-        if (rulerSection.thunderDashButton != null)
-        {
-            rulerSection.thunderDashButton.interactable = totalPlayerPower >= thunderDashRequirement;
-            if (rulerSection.thunderDashCostText != null)
-                rulerSection.thunderDashCostText.text = $"Cost: {thunderDashRequirement}";
-        }
-        
-        if (rulerSection.beamOfOrderButton != null)
-        {
-            rulerSection.beamOfOrderButton.interactable = totalPlayerPower >= beamOfOrderRequirement;
-            if (rulerSection.beamCostText != null)
-                rulerSection.beamCostText.text = $"Cost: {beamOfOrderRequirement}";
-        }
-        
-        if (rulerSection.emperorsWrathButton != null)
-        {
-            rulerSection.emperorsWrathButton.interactable = totalPlayerPower >= emperorsWrathRequirement;
-            if (rulerSection.wrathCostText != null)
-                rulerSection.wrathCostText.text = $"Cost: {emperorsWrathRequirement}";
-        }
-    }
-    
-    private float CalculatePlayerDamage(int power)
-    {
-        return 10f + (power * 2f); // Base damage + power scaling
-    }
-    
-    private float CalculatePlayerHealthGain(int power)
-    {
-        return 5f + (power * 1.5f); // Base health + power scaling
-    }
-    
-    #endregion
-    
-    #region Village Summary
-    
-    private void UpdateVillageSummary()
-    {
-        // Food production
-        int foodProduction = villageManager != null ? villageManager.CalculateFoodProduction() : 0;
-        if (villageSummary.foodProductionText != null)
-            villageSummary.foodProductionText.text = $"{foodProduction}";
-        
-        // Power totals
-        int totalPower = GetTotalPower();
-        int unallocatedPower = GetUnallocatedPower();
-        
-        if (villageSummary.totalPowerText != null)
-            villageSummary.totalPowerText.text = $"{totalPower}";
-        if (villageSummary.unallocatedPowerText != null)
-            villageSummary.unallocatedPowerText.text = $"{unallocatedPower}";
-        
-        // Villager counts
-        int totalVillagers = currentVillagers.Count;
-        int rebelCount = currentVillagers.Count(v => !v.IsLoyal());
-        
-        if (villageSummary.villagerCountText != null)
-            villageSummary.villagerCountText.text = $"{totalVillagers}";
-        if (villageSummary.rebelCountText != null)
-        {
-            villageSummary.rebelCountText.text = $"{rebelCount}";;
-        }
-        
-        // Update visual bars
-        if (villageSummary.foodProductionBar != null)
-        {
-            float foodRatio = Mathf.Clamp01(foodProduction / 20f); // Assuming max 20 food
-            villageSummary.foodProductionBar.fillAmount = foodRatio;
-            villageSummary.foodProductionBar.color = foodRatio >= 0.5f ? villageSummary.goodColor : villageSummary.warningColor;
-        }
-        
-        if (villageSummary.powerAllocationBar != null)
-        {
-            float allocationRatio = totalPower > 0 ? (float)(totalPower - unallocatedPower) / totalPower : 0f;
-            villageSummary.powerAllocationBar.fillAmount = allocationRatio;
-        }
     }
     
     #endregion
@@ -437,65 +439,24 @@ public class VillagePowerAllocationUI : MonoBehaviour
         {
             villager.AllocatePower(power);
             
-            // Update the specific card
             VillagerCardUI cardUI = villagerToCardMap[villager];
             cardUI.villagerCard.UpdateCard(villager);
             
-            // Update power constraints for all cards
-            UpdateAllCardConstraints();
-            
-            // Refresh summary
+            UpdateVillagerCardsPowerOnly();
             UpdateVillageSummary();
         }
     }
     
-    private void UpdateAllCardConstraints()
-    {
-        int unallocatedPower = GetUnallocatedPower();
-        
-        foreach (var cardUI in villagerCards)
-        {
-            if (cardUI.villagerCard.HasVillager())
-            {
-                VillagerStats stats = cardUI.assignedVillager.GetStats();
-                
-                bool canAddPower = stats.power < 4 && unallocatedPower >= powerIncrement;
-                bool canRemovePower = stats.power > 0;
-                
-                cardUI.villagerCard.SetPowerConstraints(canAddPower, canRemovePower);
-            }
-        }
-    }
-    
-    private void ModifyRulerPower(int amount)
-    {
-        int newPower = Mathf.Max(0, playerAllocatedPower + amount);
-        
-        if (amount > 0 && GetUnallocatedPower() < amount) return;
-        
-        playerAllocatedPower = newPower;
-        RefreshAllUI();
-    }
-    
-    private void AllocateToAbility(string abilityName, int cost)
-    {
-        if (playerAllocatedPower >= cost)
-        {
-            // This should unlock the ability
-            Debug.Log($"Unlocked ability: {abilityName} for {cost} power");
-            // Connect to your player ability system here
-        }
-    }
-    
-    #endregion
-    
-    #region Power Calculations
-    
     private int GetTotalPower()
     {
-        if (powerSystem != null)
-            return powerSystem.GetTotalCommunalPower();
-        return 100; // Fallback value
+        // Try to get from PowerSystem if available
+        if (PowerSystem.Instance != null)
+        {
+            return PowerSystem.Instance.GetTotalCommunalPower();
+        }
+        
+        // Fallback calculation
+        return 100; // Default fallback value
     }
     
     private int GetUnallocatedPower()
@@ -503,47 +464,29 @@ public class VillagePowerAllocationUI : MonoBehaviour
         int totalPower = GetTotalPower();
         int allocatedPower = playerAllocatedPower;
         
+        // Add up all villager power allocations
         foreach (var villager in currentVillagers)
         {
             allocatedPower += villager.GetStats().power;
         }
         
-        return totalPower - allocatedPower;
+        return Mathf.Max(0, totalPower - allocatedPower);
     }
     
     #endregion
     
-    #region Public Interface
+    #region UI Show/Hide
     
-    public void SetPlayerPower(int power)
+    public void ShowUI()
     {
-        playerAllocatedPower = power;
+        gameObject.SetActive(true);
         RefreshAllUI();
     }
     
-    public bool IsUIActive() => isUIActive;
+    public void HideUI()
+    {
+        gameObject.SetActive(false);
+    }
     
     #endregion
-    
-    private void OnDestroy()
-    {
-        // Clean up event listeners
-        if (DayNightCycleManager.Instance != null)
-        {
-            DayNightCycleManager.Instance.OnDayStarted -= ShowUI;
-            DayNightCycleManager.Instance.OnNightStarted -= HideUI;
-        }
-        
-        // Clean up card event listeners
-        if (villagerCards != null)
-        {
-            foreach (var cardUI in villagerCards)
-            {
-                if (cardUI.villagerCard != null)
-                {
-                    cardUI.villagerCard.OnPowerChanged -= (card, newPower) => OnCardPowerChanged(cardUI.cardIndex, newPower);
-                }
-            }
-        }
-    }
 }

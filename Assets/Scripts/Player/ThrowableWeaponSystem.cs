@@ -348,13 +348,16 @@ public class ThrowableWeaponSystem : MonoBehaviour
                 pointerOverUI = UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject();
             }
 #endif
-            if (!pointerOverUI && currentCharge >= minChargeToThrow)
+            if (!pointerOverUI)
             {
-                ThrowWeapon();
-            }
-            else if (!pointerOverUI)
-            {
-                SwingWeapon();
+                if (isAiming && currentCharge >= minChargeToThrow)
+                {
+                    ThrowWeapon();
+                }
+                else
+                {
+                    SwingWeapon();
+                }
             }
         }
     }
@@ -440,10 +443,12 @@ public class ThrowableWeaponSystem : MonoBehaviour
         
         float chargeMultiplier = currentCharge / maxCharge;
         float speedMultiplier = Mathf.Lerp(0.5f, 1f, accuracyMultiplier) * throwIntensity;
-        currentSpeed = Mathf.Lerp(minThrowSpeed, maxThrowSpeed, chargeMultiplier * speedMultiplier);
-        
-        remainingPenetration = Mathf.RoundToInt((throwIntensity - 1f) * maxPenetration / (maxIntensityMultiplier - 1f));
-        
+        float playerPower = 1f;
+        if (powerSystem != null && powerSystem.GetPlayerPower() != null)
+            playerPower = Mathf.Max(1f, powerSystem.GetPlayerPower().currentPower);
+        // Scale throw speed and penetration with player power
+        currentSpeed = Mathf.Lerp(minThrowSpeed, maxThrowSpeed, chargeMultiplier * speedMultiplier) * (1f + 0.1f * playerPower);
+        remainingPenetration = Mathf.RoundToInt(((throwIntensity - 1f) * maxPenetration / (maxIntensityMultiplier - 1f)) * (1f + 0.1f * playerPower));
         velocity = throwDirection * currentSpeed;
         
         ChangeState(WeaponState.Thrown);
@@ -497,7 +502,8 @@ public class ThrowableWeaponSystem : MonoBehaviour
         
         if (currentState == WeaponState.Thrown || currentState == WeaponState.Returning)
         {
-            float depletionRate = baseFlightChargeDepletion * thrownIntensity * intensityDepletionMultiplier;
+            float playerPowerVal = playerPower.currentPower > 0 ? playerPower.currentPower : 1f;
+            float depletionRate = baseFlightChargeDepletion * thrownIntensity * intensityDepletionMultiplier * (1f + 0.1f * playerPowerVal);
             currentCharge = Mathf.Max(0f, currentCharge - depletionRate * Time.deltaTime);
             
             if (currentCharge <= 0f)
@@ -691,23 +697,22 @@ public class ThrowableWeaponSystem : MonoBehaviour
     {
         Collider2D[] colliders = Physics2D.OverlapCircleAll(weaponTransform.position, swingRange, collisionLayers);
         
+        float playerPower = 1f;
+        if (powerSystem != null && powerSystem.GetPlayerPower() != null)
+            playerPower = Mathf.Max(1f, powerSystem.GetPlayerPower().currentPower);
         foreach (Collider2D collider in colliders)
         {
             Vector3 directionToTarget = (collider.transform.position - weaponTransform.position).normalized;
             float angleToTarget = Mathf.Atan2(directionToTarget.y, directionToTarget.x) * Mathf.Rad2Deg;
-            
             float normalizedSwingStart = swingStartAngle;
             float normalizedSwingEnd = swingStartAngle + swingAngle;
             float normalizedTargetAngle = angleToTarget;
-            
             while (normalizedTargetAngle < normalizedSwingStart) normalizedTargetAngle += 360f;
             while (normalizedTargetAngle > normalizedSwingStart + 360f) normalizedTargetAngle -= 360f;
-            
             if (normalizedTargetAngle >= normalizedSwingStart && normalizedTargetAngle <= normalizedSwingEnd)
             {
-                int damage = Mathf.RoundToInt(swingDamage);
+                int damage = Mathf.RoundToInt(swingDamage * (1f + 0.1f * playerPower));
                 bool hitSomething = false;
-                
                 // Check for enemy
                 EnemyHealth enemyHealth = collider.GetComponent<EnemyHealth>();
                 if (enemyHealth != null)
@@ -718,7 +723,6 @@ public class ThrowableWeaponSystem : MonoBehaviour
                     hitSomething = true;
                     Debug.Log($"Swing hit enemy {collider.name} for {damage} damage!");
                 }
-                
                 // Check for villager health component (alternative)
                 if (!hitSomething)
                 {
@@ -732,7 +736,6 @@ public class ThrowableWeaponSystem : MonoBehaviour
                         Debug.Log($"WARNING: Swing hit villager {collider.name} for {damage} damage! (Friendly Fire)");
                     }
                 }
-                
                 if (hitSomething)
                 {
                     swingHasHit = true;
@@ -787,7 +790,10 @@ public class ThrowableWeaponSystem : MonoBehaviour
         SpawnHitEffect(hitCollider.ClosestPoint(transform.position));
         
         float chargeMultiplier = currentCharge / maxCharge;
-        int damage = Mathf.RoundToInt(baseDamage * (1f + chargeMultiplier) * thrownIntensity);
+        float playerPower = 1f;
+        if (powerSystem != null && powerSystem.GetPlayerPower() != null)
+            playerPower = Mathf.Max(1f, powerSystem.GetPlayerPower().currentPower);
+        int damage = Mathf.RoundToInt(baseDamage * (1f + chargeMultiplier) * thrownIntensity * (1f + 0.1f * playerPower));
         
         bool hitSomething = false;
         

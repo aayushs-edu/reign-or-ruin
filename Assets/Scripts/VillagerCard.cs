@@ -3,19 +3,17 @@ using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
-/// Component for individual villager cards in the power allocation UI.
-/// Attach this to your villager card prefab and assign all fields in the inspector.
+/// Enhanced villager card component that properly updates all fields using actual component references.
+/// Gets health from VillagerHealth, efficiency from VillagerCombat, and all other data from VillagerStats.
 /// </summary>
 public class VillagerCard : MonoBehaviour
 {
     [Header("Text Components")]
     public TextMeshProUGUI nameText;
     public TextMeshProUGUI roleText;
-    // public TextMeshProUGUI statsText;
-    [Header("Efficiency Bar")]
-    public Slider efficiencyBar;
     public TextMeshProUGUI powerText;
     public TextMeshProUGUI tierText;
+    public TextMeshProUGUI efficiencyText;
     
     [Header("Interactive Components")]
     public Slider powerSlider;
@@ -28,47 +26,59 @@ public class VillagerCard : MonoBehaviour
     public Image powerFill;
     
     [Header("Status Bars")]
-    public Image healthBarFill;
-    public Image discontentBarFill;
-    public Image foodBarFill;
     public Slider healthBar;
     public Slider discontentBar;
     public Slider foodBar;
+    public Slider efficiencyBar;
+    
+    [Header("Status Bar Fills (Alternative)")]
+    public Image healthBarFill;
+    public Image discontentBarFill;
+    public Image foodBarFill;
+    public Image efficiencyBarFill;
+    
+    [Header("Status Text Labels")]
+    public TextMeshProUGUI healthText;
+    public TextMeshProUGUI discontentText;
+    public TextMeshProUGUI foodText;
     
     [Header("Status Indicators")]
     public GameObject rebelIndicator;
     public GameObject activeIndicator;
     public GameObject deadIndicator;
+    public GameObject loyalIndicator;
     
     [Header("Colors")]
     public Color normalRoleColor = Color.white;
-    public Color captainColor = new Color(0.6f, 0.4f, 0.8f); // Purple
-    public Color mageColor = new Color(0.6f, 0.4f, 0.8f);
-    public Color farmerColor = new Color(0.6f, 0.4f, 0.8f);
+    public Color captainColor = new Color(0.6f, 0.4f, 0.8f);
+    public Color mageColor = new Color(0.4f, 0.6f, 0.8f);
+    public Color farmerColor = new Color(0.4f, 0.8f, 0.4f);
     public Color rebelColor = Color.red;
     
     [Header("Power Tier Colors")]
     public Color noPowerColor = Color.gray;
     public Color tier1PowerColor = Color.yellow;
     public Color tier2PowerColor = Color.green;
+    public Color maxPowerColor = Color.cyan;
     
     [Header("Status Colors")]
     public Color goodColor = Color.green;
     public Color warningColor = Color.yellow;
     public Color dangerColor = Color.red;
+    public Color excellentColor = new Color(0.2f, 1f, 0.2f);
     
     // Internal state
     [HideInInspector] public Villager assignedVillager;
-    [HideInInspector] public VillagerCombat assignedCombat;
+    [HideInInspector] public VillagerHealth villagerHealth;
+    [HideInInspector] public VillagerCombat villagerCombat;
     [HideInInspector] public int cardIndex;
     
-    // Events for power allocation
+    // Events
     public System.Action<VillagerCard, int> OnPowerChanged;
 
     private void Start()
     {
         SetupEventListeners();
-        
     }
     
     private void SetupEventListeners()
@@ -88,7 +98,6 @@ public class VillagerCard : MonoBehaviour
         if (assignedVillager == null) return;
         
         VillagerStats stats = assignedVillager.GetStats();
-        
         int newPower = Mathf.Clamp(stats.power + amount, 0, 4);
         
         if (newPower != stats.power)
@@ -111,12 +120,11 @@ public class VillagerCard : MonoBehaviour
     }
     
     /// <summary>
-    /// Update the card display with villager data
+    /// Update the card display with villager data - ensures all fields are updated using correct components
     /// </summary>
     public void UpdateCard(Villager villager)
     {
         assignedVillager = villager;
-        assignedCombat = villager != null ? villager.GetComponent<VillagerCombat>() : null;
         
         if (villager == null)
         {
@@ -124,25 +132,24 @@ public class VillagerCard : MonoBehaviour
             return;
         }
         
+        // Get component references
+        villagerHealth = villager.GetComponent<VillagerHealth>();
+        villagerCombat = villager.GetComponent<VillagerCombat>();
+        
         ShowCard();
         
         VillagerStats stats = villager.GetStats();
         VillagerRole role = villager.GetRole();
         
-        // Update basic info
+        // Update all components in proper order
         UpdateBasicInfo(villager, stats, role);
-        
-        // Update power controls
         UpdatePowerControls(stats);
-        
-        // Update status bars
         UpdateStatusBars(villager, stats);
-        
-        // Update indicators
         UpdateStatusIndicators(villager);
-        
-        // Update button states
         UpdateButtonStates(stats);
+        
+        // Force layout refresh
+        LayoutRebuilder.ForceRebuildLayoutImmediate(transform as RectTransform);
     }
     
     private void UpdateBasicInfo(Villager villager, VillagerStats stats, VillagerRole role)
@@ -151,30 +158,24 @@ public class VillagerCard : MonoBehaviour
         if (nameText != null)
             nameText.text = villager.name;
         
-        // Role with special colors
+        // Role with colors
         if (roleText != null)
         {
             roleText.text = role.ToString();
             roleText.color = GetRoleColor(role);
         }
-
-        // Efficiency bar
-        if (efficiencyBar != null)
-        {
-            float efficiency = assignedCombat != null ? assignedCombat.GetEfficiency() : 1f;
-            efficiencyBar.value = efficiency;
-            if (efficiency >= 80f)
-                efficiencyBar.fillRect.GetComponent<Image>().color = goodColor;
-            else if (efficiency >= 50f)
-                efficiencyBar.fillRect.GetComponent<Image>().color = warningColor;
-            else
-                efficiencyBar.fillRect.GetComponent<Image>().color = dangerColor;
-        }
         
         // Tier display
         if (tierText != null)
         {
-            tierText.text = $"Tier: {stats.tier}";
+            tierText.text = $"Tier {stats.tier}";
+        }
+        
+        // Efficiency - get from VillagerCombat component
+        if (efficiencyText != null && villagerCombat != null)
+        {
+            float efficiency = villagerCombat.GetEfficiency() * 100f; // Convert to percentage
+            efficiencyText.text = $"Efficiency: {efficiency:F0}%";
         }
     }
     
@@ -193,176 +194,216 @@ public class VillagerCard : MonoBehaviour
             powerText.text = $"Power: {stats.power}/4";
         }
         
-        // Power fill color
+        // Power fill color based on tier and power level
         if (powerFill != null)
         {
-            if (stats.tier >= 2)
-                powerFill.color = tier2PowerColor;
-            else if (stats.tier >= 1)
-                powerFill.color = tier1PowerColor;
-            else
-                powerFill.color = noPowerColor;
+            powerFill.color = GetPowerColor(stats.power, stats.tier);
         }
     }
     
     private void UpdateStatusBars(Villager villager, VillagerStats stats)
     {
-        // Health bar
-        float healthPercent = GetHealthPercent(villager);
-        if (healthBar != null)
-            healthBar.value = healthPercent;
-        if (healthBarFill != null)
+        // Health bar - get from VillagerHealth component
+        float healthPercent = GetHealthPercent();
+        UpdateBar(healthBar, healthBarFill, healthText, healthPercent, "Health", true);
+        
+        // Discontent bar (0-100 scale)
+        float discontentPercent = Mathf.Clamp01(stats.discontent / 100f);
+        UpdateBar(discontentBar, discontentBarFill, discontentText, discontentPercent, "Discontent", false);
+        
+        // Food bar (0-1 scale from VillagerStats)
+        UpdateBar(foodBar, foodBarFill, foodText, stats.food, "Food", true);
+        
+        // Efficiency bar - get from VillagerCombat component
+        if (villagerCombat != null)
         {
-            healthBarFill.fillAmount = healthPercent;
-            healthBarFill.color = healthPercent >= 0.5f ? goodColor : dangerColor;
+            float efficiency = villagerCombat.GetEfficiency(); // Already 0-1 range
+            UpdateBar(efficiencyBar, efficiencyBarFill, efficiencyText, efficiency, "Efficiency", true);
+        }
+    }
+    
+    private void UpdateBar(Slider slider, Image fill, TextMeshProUGUI text, float value, string label, bool higherIsBetter)
+    {
+        // Update slider
+        if (slider != null)
+        {
+            slider.value = value;
         }
         
-        // Discontent bar
-        float discontentPercent = stats.discontent / 100f;
-        if (discontentBar != null)
-            discontentBar.value = discontentPercent;
-        if (discontentBarFill != null)
+        // Update fill image
+        if (fill != null)
         {
-            discontentBarFill.fillAmount = discontentPercent;
-            
-            if (stats.discontent >= 80f)
-                discontentBarFill.color = dangerColor;
-            else if (stats.discontent >= 50f)
-                discontentBarFill.color = warningColor;
-            else
-                discontentBarFill.color = goodColor;
+            fill.fillAmount = value;
+            fill.color = GetStatusColor(value, higherIsBetter);
         }
         
-        // Food bar
-        if (foodBar != null)
-            foodBar.value = stats.food;
-        if (foodBarFill != null)
+        // Update text
+        if (text != null)
         {
-            foodBarFill.fillAmount = stats.food;
-            foodBarFill.color = stats.food >= 0.5f ? goodColor : warningColor;
+            if (label == "Efficiency")
+                text.text = $"{label}: {value * 100:F0}%";
+            else if (label == "Discontent")
+                text.text = $"{label}: {value * 100:F0}%";
+            else if (label == "Food")
+                text.text = $"{label}: {value:P0}";
+            else if (label == "Health")
+                text.text = $"{label}: {value:P0}";
         }
     }
     
     private void UpdateStatusIndicators(Villager villager)
     {
+        bool isLoyal = villager.IsLoyal();
+        bool isRebel = villager.IsRebel();
+        bool isAlive = !villagerHealth.IsDead(); // Use VillagerHealth component
+        
         // Rebel indicator
         if (rebelIndicator != null)
-            rebelIndicator.SetActive(!villager.IsLoyal());
+            rebelIndicator.SetActive(isRebel);
         
-        // Active indicator
-        if (activeIndicator != null)
-            activeIndicator.SetActive(villager.IsActive());
+        // Loyal indicator
+        if (loyalIndicator != null)
+            loyalIndicator.SetActive(isLoyal);
         
-        // Dead indicator (if you have death system)
+        // Dead indicator
         if (deadIndicator != null)
-            deadIndicator.SetActive(false); // Implement if needed
+            deadIndicator.SetActive(!isAlive);
+        
+        // Active indicator (alive and loyal)
+        if (activeIndicator != null)
+            activeIndicator.SetActive(isAlive && isLoyal);
     }
     
     private void UpdateButtonStates(VillagerStats stats)
     {
-        // This will be set by the parent UI system
-        // We'll provide the current state but let the parent decide interactability
-        
+        // Enable/disable power buttons based on constraints
         if (addPowerButton != null)
-        {
-            // Enable if not at max power
-            bool canAdd = stats.power < 4;
-            addPowerButton.interactable = canAdd;
-        }
+            addPowerButton.interactable = stats.power < 4;
         
         if (removePowerButton != null)
-        {
-            // Enable if has power to remove
-            bool canRemove = stats.power > 0;
-            removePowerButton.interactable = canRemove;
-        }
+            removePowerButton.interactable = stats.power > 0;
     }
     
     private Color GetRoleColor(VillagerRole role)
     {
         switch (role)
         {
-            case VillagerRole.Captain: return captainColor;
-            case VillagerRole.Mage: return mageColor;
-            case VillagerRole.Farmer: return farmerColor;
-            default: return normalRoleColor;
+            case VillagerRole.Captain:
+                return captainColor;
+            case VillagerRole.Mage:
+                return mageColor;
+            case VillagerRole.Farmer:
+                return farmerColor;
+            default:
+                return normalRoleColor;
         }
     }
     
-    private float GetHealthPercent(Villager villager)
+    private Color GetPowerColor(int power, int tier)
     {
-        // Get health from villager health component
-        VillagerHealth health = villager.GetComponent<VillagerHealth>();
-        if (health != null)
-        {
-            return health.GetHealthPercentage();
-        }
-        return 1f; // Default to full health
+        if (power >= 4)
+            return maxPowerColor;
+        else if (tier >= 2)
+            return tier2PowerColor;
+        else if (tier >= 1)
+            return tier1PowerColor;
+        else
+            return noPowerColor;
     }
     
-    /// <summary>
-    /// Show this card
-    /// </summary>
+    private Color GetStatusColor(float value, bool higherIsBetter)
+    {
+        if (higherIsBetter)
+        {
+            if (value >= 0.8f)
+                return excellentColor;
+            else if (value >= 0.5f)
+                return goodColor;
+            else if (value >= 0.3f)
+                return warningColor;
+            else
+                return dangerColor;
+        }
+        else
+        {
+            if (value <= 0.2f)
+                return excellentColor;
+            else if (value <= 0.5f)
+                return goodColor;
+            else if (value <= 0.7f)
+                return warningColor;
+            else
+                return dangerColor;
+        }
+    }
+    
+    private float GetHealthPercent()
+    {
+        if (villagerHealth != null)
+        {
+            return villagerHealth.GetHealthPercentage(); // Use actual VillagerHealth method
+        }
+        
+        return 1f; // Fallback
+    }
+    
     public void ShowCard()
     {
         gameObject.SetActive(true);
     }
     
-    /// <summary>
-    /// Hide this card
-    /// </summary>
     public void HideCard()
     {
         gameObject.SetActive(false);
         assignedVillager = null;
+        villagerHealth = null;
+        villagerCombat = null;
     }
     
-    /// <summary>
-    /// Set power allocation constraints
-    /// </summary>
-    public void SetPowerConstraints(bool canAddPower, bool canRemovePower)
-    {
-        if (addPowerButton != null)
-            addPowerButton.interactable = canAddPower;
-        if (removePowerButton != null)
-            removePowerButton.interactable = canRemovePower;
-    }
-    
-    /// <summary>
-    /// Get the current power allocation
-    /// </summary>
-    public int GetCurrentPower()
-    {
-        return assignedVillager != null ? assignedVillager.GetStats().power : 0;
-    }
-    
-    /// <summary>
-    /// Check if this card represents a valid villager
-    /// </summary>
     public bool HasVillager()
     {
         return assignedVillager != null;
     }
     
-    private void OnDestroy()
+    public Villager GetVillager()
     {
-        // Clean up event listeners
-        if (addPowerButton != null)
-            addPowerButton.onClick.RemoveAllListeners();
-        if (removePowerButton != null)
-            removePowerButton.onClick.RemoveAllListeners();
-        if (powerSlider != null)
-            powerSlider.onValueChanged.RemoveAllListeners();
+        return assignedVillager;
     }
     
-    #if UNITY_EDITOR
-    [ContextMenu("Test Card Update")]
-    private void TestCardUpdate()
+    /// <summary>
+    /// Force a complete refresh of all card elements
+    /// </summary>
+    public void ForceRefresh()
     {
-        if (Application.isPlaying && assignedVillager != null)
+        if (assignedVillager != null)
         {
             UpdateCard(assignedVillager);
         }
     }
-    #endif
+    
+    /// <summary>
+    /// Update only the power-related elements (for frequent updates)
+    /// </summary>
+    public void UpdatePowerOnly()
+    {
+        if (assignedVillager != null)
+        {
+            VillagerStats stats = assignedVillager.GetStats();
+            UpdatePowerControls(stats);
+            UpdateButtonStates(stats);
+        }
+    }
+    
+    /// <summary>
+    /// Update only the status bars (for real-time updates during combat)
+    /// </summary>
+    public void UpdateStatusOnly()
+    {
+        if (assignedVillager != null)
+        {
+            VillagerStats stats = assignedVillager.GetStats();
+            UpdateStatusBars(assignedVillager, stats);
+            UpdateStatusIndicators(assignedVillager);
+        }
+    }
 }
