@@ -7,16 +7,17 @@ public class SwordDamageDealer : MonoBehaviour
 {
     [Header("Damage Settings")]
     [SerializeField] private int damage = 12;
-    [SerializeField] private bool onlyDamageOnce = true; // Only damage each enemy once per swing
+    [SerializeField] private bool onlyDamageOnce = true;
     [SerializeField] private LayerMask damageLayers = -1;
     
     [Header("Hit Effect")]
     [SerializeField] private GameObject hitEffectPrefab;
     [SerializeField] private Vector3 hitEffectOffset = Vector3.zero;
-    [SerializeField] private float effectAutoDestroyTime = 2f; // Fallback if can't get animation length
+    [SerializeField] private float effectAutoDestroyTime = 2f;
     
     [Header("Debug")]
     [SerializeField] private bool debugMode = false;
+    [SerializeField] private bool debugDamageWindow = true; // Debug specifically for damage timing issues
     
     // References
     private CaptainCombat combatSystem;
@@ -24,7 +25,6 @@ public class SwordDamageDealer : MonoBehaviour
     private Collider2D damageCollider;
     
     // State
-    private bool canDealDamage = false;
     private HashSet<GameObject> damagedThisSwing = new HashSet<GameObject>();
     
     private void Awake()
@@ -44,6 +44,11 @@ public class SwordDamageDealer : MonoBehaviour
     {
         combatSystem = combat;
         villager = villagerComponent;
+        
+        if (debugMode)
+        {
+            Debug.Log($"SwordDamageDealer: Initialized for {villagerComponent.name} with combat system {combat.name}");
+        }
     }
     
     public void SetDamage(int newDamage)
@@ -58,25 +63,113 @@ public class SwordDamageDealer : MonoBehaviour
             Debug.Log($"SwordDamageDealer: {transform.root.name} triggered with {other.gameObject.name} (Tag: {other.tag})");
         }
         
-        if (!combatSystem.IsAttacking()) return;
-        else damagedThisSwing.Clear(); // Reset for new swing
+        // CRITICAL FIX: Use the new damage window check instead of just IsAttacking()
+        bool canDealDamage = false;
         
-        // Skip if we've already damaged this target this swing
-        if (onlyDamageOnce && damagedThisSwing.Contains(other.gameObject)) return;
+        if (combatSystem != null)
+        {
+            // Try the new damage window method first (for fixed CaptainCombat)
+            if (combatSystem is CaptainCombat captainCombat)
+            {
+                canDealDamage = captainCombat.IsDamageWindowActive();
+                
+                if (debugDamageWindow)
+                {
+                    Debug.Log($"SwordDamageDealer: Captain {captainCombat.name} - IsAttacking: {captainCombat.IsAttacking()}, " +
+                             $"IsDamageWindowActive: {canDealDamage}");
+                }
+            }
+            else
+            {
+                // Fallback for other combat systems
+                canDealDamage = combatSystem.IsAttacking();
+                
+                if (debugDamageWindow)
+                {
+                    Debug.Log($"SwordDamageDealer: Non-Captain combat system - IsAttacking: {canDealDamage}");
+                }
+            }
+        }
+        
+        if (!canDealDamage)
+        {
+            if (debugDamageWindow)
+            {
+                Debug.Log($"SwordDamageDealer: Cannot deal damage - damage window not active for {transform.root.name}");
+            }
+            return;
+        }
+        
+        // Reset damaged list at start of new attack window
+        if (onlyDamageOnce)
+        {
+            // Check if this is a new attack by seeing if the list is empty
+            // (it gets cleared when damage window opens)
+            if (damagedThisSwing.Count == 0)
+            {
+                if (debugDamageWindow)
+                {
+                    Debug.Log($"SwordDamageDealer: New attack started for {transform.root.name} - cleared damage list");
+                }
+            }
+            
+            // Skip if we've already damaged this target this swing
+            if (damagedThisSwing.Contains(other.gameObject))
+            {
+                if (debugDamageWindow)
+                {
+                    Debug.Log($"SwordDamageDealer: Already damaged {other.name} this swing - skipping");
+                }
+                return;
+            }
+        }
         
         // Check layer
-        if (damageLayers != -1 && !IsInLayerMask(other.gameObject.layer, damageLayers)) return;
+        if (damageLayers != -1 && !IsInLayerMask(other.gameObject.layer, damageLayers))
+        {
+            if (debugMode)
+            {
+                Debug.Log($"SwordDamageDealer: {other.name} not in damage layers - skipping");
+            }
+            return;
+        }
         
         // Determine if this is a valid target based on villager state
-        if (!IsValidTarget(other.gameObject)) return;
+        if (!IsValidTarget(other.gameObject))
+        {
+            if (debugMode)
+            {
+                Debug.Log($"SwordDamageDealer: {other.name} is not a valid target for {villager.name} ({villager.GetState()}) - skipping");
+            }
+            return;
+        }
 
         // Try to deal damage
         if (TryDealDamage(other.gameObject))
         {
-            damagedThisSwing.Add(other.gameObject);
+            if (onlyDamageOnce)
+            {
+                damagedThisSwing.Add(other.gameObject);
+            }
 
             // Spawn hit effect at impact point
             SpawnHitEffect(other);
+            
+            if (debugDamageWindow)
+            {
+                Debug.Log($"SwordDamageDealer: Successfully damaged {other.name} for {damage} damage!");
+            }
+        }
+    }
+    
+    // Public method to clear the damage list (called by CaptainCombat at start of damage window)
+    public void ResetDamageList()
+    {
+        damagedThisSwing.Clear();
+        
+        if (debugDamageWindow)
+        {
+            Debug.Log($"SwordDamageDealer: Damage list reset for {transform.root.name}");
         }
     }
     
@@ -98,13 +191,11 @@ public class SwordDamageDealer : MonoBehaviour
         GameObject effect = Instantiate(hitEffectPrefab, spawnPosition, Quaternion.identity);
         Destroy(effect, effectAutoDestroyTime);
         
-        
         if (debugMode)
         {
             Debug.Log($"Spawned hit effect at {spawnPosition} for hit on {hitTarget.name}");
         }
     }
-
     
     private bool IsInLayerMask(int layer, LayerMask layerMask)
     {
@@ -113,9 +204,24 @@ public class SwordDamageDealer : MonoBehaviour
     
     private bool IsValidTarget(GameObject target)
     {
-        // Don't hit self
-        // if (target.transform.IsChildOf(transform.root)) return false;
-        // if (villager == null) return false;
+        // Don't hit self or same villager
+        if (target.transform.IsChildOf(transform.root)) 
+        {
+            if (debugMode)
+            {
+                Debug.Log($"SwordDamageDealer: Skipping self-hit for {target.name}");
+            }
+            return false;
+        }
+        
+        if (villager == null) 
+        {
+            if (debugMode)
+            {
+                Debug.LogError($"SwordDamageDealer: No villager reference set!");
+            }
+            return false;
+        }
         
         // Get target villager component (if it exists)
         Villager targetVillager = target.GetComponent<Villager>();
@@ -123,15 +229,37 @@ public class SwordDamageDealer : MonoBehaviour
         if (villager.IsRebel())
         {
             // Rebels attack: Player OR Loyal villagers
-            if (target.CompareTag("Player")) return true;
-            if (targetVillager != null && !targetVillager.IsRebel()) return true;
+            if (target.CompareTag("Player")) 
+            {
+                if (debugMode) Debug.Log($"SwordDamageDealer: Rebel {villager.name} can attack player {target.name}");
+                return true;
+            }
+            if (targetVillager != null && !targetVillager.IsRebel()) 
+            {
+                if (debugMode) Debug.Log($"SwordDamageDealer: Rebel {villager.name} can attack loyal villager {target.name}");
+                return true;
+            }
         }
         else
         {
             // Loyals attack: Enemies OR Rebel villagers  
-            if (target.CompareTag("Enemy")) return true;
-            if (targetVillager != null && targetVillager.IsRebel()) return true;
+            if (target.CompareTag("Enemy")) 
+            {
+                if (debugMode) Debug.Log($"SwordDamageDealer: Loyal {villager.name} can attack enemy {target.name}");
+                return true;
+            }
+            if (targetVillager != null && targetVillager.IsRebel()) 
+            {
+                if (debugMode) Debug.Log($"SwordDamageDealer: Loyal {villager.name} can attack rebel villager {target.name}");
+                return true;
+            }
         }
+        
+        // if (debugMode)
+        // {
+        //     Debug.Log($"SwordDamageDealer: {villager.name} ({villager.GetState()}) cannot attack {target.name} " +
+        //              $"(Villager: {targetVillager?.GetState() ?? "None"})");
+        // }
         
         return false;
     }
@@ -154,11 +282,9 @@ public class SwordDamageDealer : MonoBehaviour
         }
         
         // IMPORTANT: Try VillagerHealth FIRST since it inherits from Health
-        // If we try Health first, it will succeed but not handle villager-specific logic
         VillagerHealth villagerHealth = target.GetComponent<VillagerHealth>();
         if (villagerHealth != null)
         {
-            // Pass the attacking villager as the damage source for proper faction tracking
             villagerHealth.TakeDamage(damage, villager.gameObject);
             damageDealt = true;
             
@@ -228,16 +354,33 @@ public class SwordDamageDealer : MonoBehaviour
     
     private void OnDrawGizmos()
     {
-        if (!debugMode) return;
+        if (!debugMode && !debugDamageWindow) return;
         
         // Show damage state
+        bool canDealDamage = false;
+        if (Application.isPlaying && combatSystem != null)
+        {
+            if (combatSystem is CaptainCombat captainCombat)
+            {
+                canDealDamage = captainCombat.IsDamageWindowActive();
+            }
+            else
+            {
+                canDealDamage = combatSystem.IsAttacking();
+            }
+        }
+        
         if (canDealDamage)
         {
-            Gizmos.color = Color.red;
+            Gizmos.color = Color.red; // Can deal damage
+        }
+        else if (Application.isPlaying && combatSystem != null && combatSystem.IsAttacking())
+        {
+            Gizmos.color = Color.yellow; // Attacking but damage window closed
         }
         else
         {
-            Gizmos.color = Color.gray;
+            Gizmos.color = Color.gray; // Not attacking
         }
         
         // Draw collider bounds

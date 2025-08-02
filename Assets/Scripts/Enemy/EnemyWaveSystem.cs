@@ -47,6 +47,10 @@ public class EnemyWaveSystem : MonoBehaviour
     [SerializeField] private float spawnRadius = 2f;
     [SerializeField] private Transform playerTarget; // What enemies should pathfind to
 
+    [Header("Day/Night Cycle Integration")]
+    [SerializeField] private bool useManualWaveControl = true;
+    [SerializeField] private bool debugDayNightIntegration = true;
+
     [Header("Debug")]
     [SerializeField] private bool debugMode = false;
 
@@ -392,7 +396,16 @@ public class EnemyWaveSystem : MonoBehaviour
         waveConfig.timeBetweenSpawns *= waveConfig.waveTimingReduction;
 
         // Start next wave after delay
-        Invoke(nameof(StartNextWave), waveConfig.timeBetweenWaves);
+        if (!useManualWaveControl)
+        {
+            // Only auto-start next wave if not using manual control
+            Invoke(nameof(StartNextWave), waveConfig.timeBetweenWaves);
+        }
+        else
+        {
+            if (debugDayNightIntegration)
+                Debug.Log("EnemyWaveSystem: Wave completed, waiting for manual start");
+        }
     }
 
     private void ShuffleList<T>(List<T> list)
@@ -403,6 +416,76 @@ public class EnemyWaveSystem : MonoBehaviour
             int randomIndex = Random.Range(i, list.Count);
             list[i] = list[randomIndex];
             list[randomIndex] = temp;
+        }
+    }
+
+    /// <summary>
+    /// Get the composition of the next wave for UI preview
+    /// </summary>
+    public Dictionary<string, int> GetNextWaveComposition()
+    {
+        var composition = new Dictionary<string, int>();
+        
+        int nextWaveNumber = currentWave + 1;
+        int waveBudget = Mathf.RoundToInt(waveConfig.baseBudget * Mathf.Pow(waveConfig.budgetGrowthRate, nextWaveNumber - 1));
+        
+        // Generate preview composition using existing logic
+        List<EnemyType> enemies = GenerateWaveComposition(waveBudget);
+        
+        // Count enemies by type
+        foreach (var enemy in enemies)
+        {
+            string enemyName = enemy.enemyName;
+            if (composition.ContainsKey(enemyName))
+                composition[enemyName]++;
+            else
+                composition[enemyName] = 1;
+        }
+        
+        if (debugDayNightIntegration)
+        {
+            Debug.Log($"Next wave ({nextWaveNumber}) preview:");
+            foreach (var kvp in composition)
+            {
+                Debug.Log($"  {kvp.Key}: {kvp.Value}");
+            }
+        }
+        
+        return composition;
+    }
+
+    /// <summary>
+    /// Start a wave manually - called by DayNightCycleManager
+    /// </summary>
+    public void StartWaveManually()
+    {
+        if (useManualWaveControl)
+        {
+            // Cancel any existing auto-start invoke
+            CancelInvoke(nameof(StartNextWave));
+            
+            // Start the wave immediately
+            StartNextWave();
+            
+            if (debugDayNightIntegration)
+                Debug.Log("EnemyWaveSystem: Wave started manually by day/night cycle");
+        }
+    }
+
+    /// <summary>
+    /// Disable automatic wave progression - called during initialization
+    /// </summary>
+    public void SetManualWaveControl(bool manual)
+    {
+        useManualWaveControl = manual;
+        
+        if (manual)
+        {
+            // Cancel any pending auto-start
+            CancelInvoke(nameof(StartNextWave));
+            
+            if (debugDayNightIntegration)
+                Debug.Log("EnemyWaveSystem: Switched to manual wave control");
         }
     }
 

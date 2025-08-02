@@ -315,12 +315,20 @@ public class VillagerAI : MonoBehaviour
         }
     }
     
+    public void SetMoveSpeed(float newSpeed)
+    {
+        if (agent != null)
+        {
+            agent.speed = newSpeed;
+        }
+    }
+    
     private void WanderAggressive()
     {
         // Rebels wander more widely
         Vector3 randomDirection = Random.insideUnitCircle * (idleWanderRadius * 2f);
         Vector3 targetPos = transform.position + randomDirection;
-        
+
         if (agent != null && agent.isOnNavMesh)
         {
             agent.SetDestination(targetPos);

@@ -34,8 +34,9 @@ public class PotionProjectile : MonoBehaviour
     
     [Header("Debug")]
     [SerializeField] private bool debugProjectile = false;
-    
+
     // Flight state
+    private Transform throwerTransform; 
     private Vector3 startPosition;
     private Vector3 targetPosition;
     private int healAmount;
@@ -121,11 +122,12 @@ public class PotionProjectile : MonoBehaviour
         }
     }
     
-    public void Launch(Vector3 start, Vector3 target, int healing, AnimationCurve curve = null)
+    public void Launch(Vector3 start, Vector3 target, int healing, Transform thrower = null, AnimationCurve curve = null)
     {
         startPosition = start;
         targetPosition = target;
         healAmount = healing;
+        throwerTransform = thrower;
         customFlightCurve = curve ?? flightCurve;
         
         transform.position = startPosition;
@@ -246,6 +248,12 @@ public class PotionProjectile : MonoBehaviour
         
         foreach (var collider in nearbyColliders)
         {
+            // Skip the thrower
+            if (throwerTransform != null && collider.transform == throwerTransform)
+            {
+                continue;
+            }
+            
             // Look for villager health component
             VillagerHealth villagerHealth = collider.GetComponent<VillagerHealth>();
             if (villagerHealth != null)
@@ -340,6 +348,12 @@ public class PotionProjectile : MonoBehaviour
     
     private bool ShouldImpactOnVillager(Collider2D other)
     {
+        // Skip the thrower
+        if (throwerTransform != null && other.transform == throwerTransform)
+        {
+            return false;
+        }
+        
         // Check if it's a villager that needs healing
         VillagerHealth villagerHealth = other.GetComponent<VillagerHealth>();
         if (villagerHealth != null)

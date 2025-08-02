@@ -219,7 +219,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   attackRange: 8
   attackCooldown: 2
-  damage: 5
+  damage: 7
   attackableLayers:
     serializedVersion: 2
     m_Bits: 1088
@@ -231,14 +231,13 @@ MonoBehaviour:
   particleSpawnPoint: {fileID: 2286572862629694606}
   particleDuration: 2
   animationWindupDelay: 0.1
-  colliderBaseSize: {x: 0.2, y: 1, z: 1}
+  colliderBaseSize: {x: 0.2, y: 1}
+  colliderMoveSpeed: 6
+  colliderMaxDistance: 6
+  colliderGrowthRate: 7
   colliderHitLayers:
     serializedVersion: 2
     m_Bits: 1088
-  colliderMaxDistance: 6
-  colliderMoveSpeed: 6
-  colliderGrowthRate: 7
-  hitCooldownPerTarget: 0.1
   particleAttackSound: {fileID: 0}
   particleHitSound: {fileID: 0}
 --- !u!114 &1473139512712991752
