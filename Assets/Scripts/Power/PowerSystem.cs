@@ -300,7 +300,20 @@ public class PowerSystem : MonoBehaviour
         // - Power generation stops temporarily
         // - etc.
     }
-    
+
+    public int GetUnallocatedPower()
+    {
+        int allocatedPower = playerPower.currentPower;
+
+        // Add up all villager power allocations
+        foreach (var villager in villagerPowers)
+        {
+            allocatedPower += villager.currentPower;
+        }
+
+        return Mathf.Max(0, totalCommunalPower - allocatedPower);
+    }
+
     // Public getters
     public int GetTotalCommunalPower() => totalCommunalPower;
     public int GetTotalPossiblePower() => playerPower.maxPower + villagerPowers.Sum(v => v.maxPower);

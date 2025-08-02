@@ -8,6 +8,8 @@ using TMPro;
 /// </summary>
 public class VillagerCard : MonoBehaviour
 {
+
+    
     [Header("Text Components")]
     public TextMeshProUGUI nameText;
     public TextMeshProUGUI roleText;
@@ -73,9 +75,6 @@ public class VillagerCard : MonoBehaviour
     [HideInInspector] public VillagerCombat villagerCombat;
     [HideInInspector] public int cardIndex;
     
-    // Events
-    public System.Action<VillagerCard, int> OnPowerChanged;
-
     private void Start()
     {
         SetupEventListeners();
@@ -100,10 +99,10 @@ public class VillagerCard : MonoBehaviour
         VillagerStats stats = assignedVillager.GetStats();
         int newPower = Mathf.Clamp(stats.power + amount, 0, 4);
         
-        if (newPower != stats.power)
-        {
-            OnPowerChanged?.Invoke(this, newPower);
-        }
+        // if (newPower != stats.power)
+        // {
+        //     OnPowerChanged?.Invoke(this, newPower);
+        // }
     }
     
     private void OnSliderChanged(float value)
@@ -113,10 +112,10 @@ public class VillagerCard : MonoBehaviour
         int newPower = Mathf.RoundToInt(value);
         VillagerStats stats = assignedVillager.GetStats();
         
-        if (newPower != stats.power)
-        {
-            OnPowerChanged?.Invoke(this, newPower);
-        }
+        // if (newPower != stats.power)
+        // {
+        //     OnPowerChanged?.Invoke(this, newPower);
+        // }
     }
     
     /// <summary>
@@ -379,6 +378,12 @@ public class VillagerCard : MonoBehaviour
         {
             UpdateCard(assignedVillager);
         }
+    }
+
+    public void SetAssignedVillager(Villager villager)
+    {
+        assignedVillager = villager;
+        UpdateCard(villager);
     }
     
     /// <summary>

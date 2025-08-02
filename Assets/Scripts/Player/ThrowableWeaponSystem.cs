@@ -1,6 +1,8 @@
 using UnityEngine;
 using Cinemachine;
 using UnityEngine.Rendering.Universal;
+using System.Collections;
+using System.Collections.Generic;
 
 public enum WeaponState
 {
@@ -53,190 +55,124 @@ public class ThrowableWeaponSystem : MonoBehaviour
     [SerializeField] private float zoomFOV = 4f;
     [SerializeField] private float normalFOV = 6f;
     [SerializeField] private float cameraTransitionSpeed = 3f;
+    [SerializeField] private float cameraLookaheadDistance = 3f; // How far ahead to look
+    [SerializeField] private float lookaheadTransitionSpeed = 2f; // How fast to transition lookahead
 
     [SerializeField] private float chargeRotationSpeed = 90f; // Degrees per second during charge
     [SerializeField] private float maxChargeRotation = 180f;
     
-    [Header("Swing Attack")]
-    [SerializeField] private float swingDamage = 1f;
-    [SerializeField] private float swingRange = 1.5f;
-    [SerializeField] private float swingDuration = 0.3f;
-    [SerializeField] private float swingAngle = 120f;
-    [SerializeField] private float swingCooldown = 0.5f;
+    [Header("Animation-Driven Melee")]
+    [SerializeField] private Animator weaponAnimator; // Animator for melee swing animation
+    [SerializeField] private string meleeAttackTrigger = "MeleeAttack"; // Animation trigger name
+    [SerializeField] private float meleeAnimationDuration = 0.5f; // Duration of melee animation
+    [SerializeField] private bool debugMeleeAnimation = false;
     
-    [Header("Damage Configuration")]
-    [SerializeField] private int baseDamage = 2;
-    [SerializeField] private float damageMultiplierPerCharge = 0.02f;
+    [Header("Swing Attack")]
+    [SerializeField] private float swingDamage = 15f;
+    [SerializeField] private float swingRange = 2f;
+    [SerializeField] private float swingAngle = 120f;
+    [SerializeField] private float swingDuration = 0.5f;
+    [SerializeField] private float swingCooldown = 1f;
+    
+    [Header("Mouse Control")]
+    [SerializeField] private bool enableMouseTracking = true;
     
     [Header("Visual Effects")]
     [SerializeField] private Color normalColor = Color.white;
     [SerializeField] private Color chargedColor = Color.cyan;
-    [SerializeField] private float minLightIntensity = 0f;
-    [SerializeField] private float maxLightIntensity = 6f;
-
-    // Add these new fields:
-    [SerializeField] private GameObject hitEffectPrefab;
-    [SerializeField] private float hitEffectMinLifetime = 0f;
-    [SerializeField] private float hitEffectMaxLifetime = 3f;
-    [SerializeField] private Vector3 hitEffectOffset = Vector3.zero;
-
-    [Header("Particle Effects")]
-    [SerializeField] private float minParticleLifetime = 0f;
+    [SerializeField] private float minLightIntensity = 0.3f;
+    [SerializeField] private float maxLightIntensity = 1.5f;
+    
+    [Header("Particle Configuration")]
+    [SerializeField] private float minParticleLifetime = 0.5f;
     [SerializeField] private float maxParticleLifetime = 2f;
     [SerializeField] private bool scaleParticleIntensityWithCharge = true;
-
-    // Add these new fields:
-    [SerializeField] private float minEmissionRate = 0f;
-    [SerializeField] private float maxEmissionRate = 50f;
-    [SerializeField] private float minStartSize = 0.1f;
-    [SerializeField] private float maxStartSize = 1f;
-    [SerializeField] private AnimationCurve emissionCurve = AnimationCurve.Linear(0, 0, 1, 1);
-    [SerializeField] private AnimationCurve sizeCurve = AnimationCurve.Linear(0, 0, 1, 1);
-
-    [Header("Physics Settings")]
-    [SerializeField] private LayerMask groundLayers = 1; // What counts as ground
-    [SerializeField] private float groundCheckDistance = 0.5f;
-    [SerializeField] private float fallGravity = 1f;
-    [SerializeField] private float fallDrag = 2f;
+    [SerializeField] private AnimationCurve emissionCurve = AnimationCurve.Linear(0, 0.2f, 1, 1f);
+    [SerializeField] private float minEmissionRate = 5f;
+    [SerializeField] private float maxEmissionRate = 30f;
     
-    [Header("Pickup Settings")]
+    [Header("Hit Effects")]
+    [SerializeField] private GameObject hitEffectPrefab;
+    [SerializeField] private Vector3 hitEffectOffset = Vector3.zero;
+    [SerializeField] private float hitEffectMinLifetime = 0.5f;
+    [SerializeField] private float hitEffectMaxLifetime = 2f;
+    
+    [Header("Damage System")]
+    [SerializeField] private int baseDamage = 25;
+    [SerializeField] private float damageMultiplierPerCharge = 0.02f;
+    
+    [Header("Ground Detection")]
+    [SerializeField] private LayerMask groundLayers = 1;
+    [SerializeField] private float groundCheckDistance = 0.5f;
+    [SerializeField] private float fallGravity = 2f;
+    [SerializeField] private float fallDrag = 1f;
+    
+    [Header("Pickup System")]
     [SerializeField] private float pickupRange = 2f;
-    [SerializeField] private float pickupChargeRestore = 20f;
-
+    [SerializeField] private float pickupChargeRestore = 30f;
+    
     [Header("Audio")]
+    [SerializeField] private AudioSource audioSource;
     [SerializeField] private AudioClip throwSound;
     [SerializeField] private AudioClip hitSound;
+    [SerializeField] private AudioClip returnSound;
     [SerializeField] private AudioClip swingSound;
     [SerializeField] private AudioClip pickupSound;
     [SerializeField] private float volume = 1f;
-
-    // Add these new fields:
-    [SerializeField] private AudioClip idleSound; // Looping crackling sound
-    [SerializeField] private bool scaleVolumeWithCharge = true;
-    [SerializeField] private float minVolume = 0.1f;
-    [SerializeField] private AnimationCurve volumeCurve = AnimationCurve.Linear(0, 0, 1, 1);
-    [SerializeField] private float idleVolumeMultiplier = 0.5f; // Idle sound is usually quieter
-
-    [Header("Mouse Tracking")]
-    [SerializeField] private bool enableMouseTracking = true;
-
-    // State variables
-    private AudioSource idleAudioSource;
+    
+    [Header("Debug")]
+    [SerializeField] private bool debugCollision = false;
+    [SerializeField] private bool debugCharge = false;
+    [SerializeField] private bool debugMovement = false;
+    
+    // Core state
     private WeaponState currentState = WeaponState.Held;
-    private float currentCharge;
-    private float aimStartTime;
-    private Vector3 throwDirection;
-    private Vector3 originalPosition;
-    private bool isAiming = false;
-    private float currentIntensity = 1f;
-    private float targetCameraSize;
-    private float thrownIntensity = 1f;
+    private Transform originalParent;
+    private Camera mainCamera;
+    private PowerSystem powerSystem;
     
-    // Swing attack variables
-    private bool isSwinging = false;
-    private float swingStartTime;
-    private float lastSwingTime;
-    private float swingStartAngle;
-    private bool swingHasHit = false;
-    
-    // Movement variables
+    // Throwing state
     private Vector3 velocity;
+    private Vector3 throwDirection;
     private float currentSpeed;
     private int remainingPenetration;
+    private float thrownIntensity = 1f;
     private bool isOnGround = false;
     
-    // References
-    private PowerSystem powerSystem;
-    private PlayerMovement playerMovement;
-    private Camera mainCamera;
-    private AudioSource audioSource;
-    private Transform originalParent;
-
-    // Add to state variables section
+    // Aiming state
+    private bool isAiming = false;
+    private float aimStartTime;
+    private float currentIntensity = 1f;
+    private float targetCameraSize;
+    private Vector3 originalCameraOffset;
+    private bool hasStoredOriginalOffset = false;
+    
+    // Charge state
+    private float currentCharge = 100f;
     private float currentChargeRotation = 0f;
+    
+    // Animation-driven melee state
+    private bool isMeleeAttacking = false;
+    private HashSet<GameObject> meleeHitTargets = new HashSet<GameObject>(); // Track hit targets per swing
+    
+    // Legacy swing state (kept for compatibility)
+    private bool isSwinging = false;
+    private float swingStartTime;
+    private float swingStartAngle;
+    private float lastSwingTime;
+    private bool swingHasHit = false;
     
     // Events
     public System.Action<float> OnChargeChanged;
-    public System.Action<WeaponState> OnStateChanged;
     public System.Action<int> OnDamageDealt;
     
-    private void Start()
+    private void Awake()
     {
-        InitializeComponents();
-        SetupWeapon();
-        currentCharge = maxCharge;
-        originalPosition = weaponTransform.localPosition;
-        targetCameraSize = normalFOV;
         originalParent = transform.parent;
-        
-        // Start idle sound if available
-        if (idleAudioSource != null && idleSound != null)
-        {
-            idleAudioSource.Play();
-            UpdateIdleSound(); // Set initial volume
-        }
-    }
-    
-    private void UpdateIdleSound()
-    {
-        if (idleAudioSource == null || !scaleVolumeWithCharge) return;
-        
-        float chargeLevel = currentCharge / maxCharge;
-        float targetVolume = 0f;
-        
-        // Only play idle sound when weapon is held and has some charge
-        if (currentState == WeaponState.Held || currentState == WeaponState.Aiming)
-        {
-            float curveValue = volumeCurve.Evaluate(chargeLevel);
-            targetVolume = Mathf.Lerp(minVolume, 1f, curveValue) * idleVolumeMultiplier;
-            
-            // Extra intensity when aiming
-            if (isAiming && currentIntensity > 1f)
-            {
-                float intensityBoost = (currentIntensity - 1f) / (maxIntensityMultiplier - 1f);
-                targetVolume *= (1f + intensityBoost * 0.3f); // 30% louder when charging
-            }
-        }
-        
-        idleAudioSource.volume = targetVolume;
-        
-        // Mute completely at very low charge or when not held
-        if (chargeLevel < 0.05f || currentState == WeaponState.Dropped || currentState == WeaponState.Thrown)
-        {
-            idleAudioSource.volume = 0f;
-        }
-    }
-
-    private void InitializeComponents()
-    {
-        powerSystem = PowerSystem.Instance;
-        playerMovement = GetComponentInParent<PlayerMovement>();
         mainCamera = Camera.main;
-        audioSource = GetComponent<AudioSource>();
-
-        if (audioSource == null)
-        {
-            audioSource = gameObject.AddComponent<AudioSource>();
-        }
-
-        // Add idle audio source
-        idleAudioSource = transform.Find("IdleAudioSource")?.GetComponent<AudioSource>();
-        if (idleAudioSource == null && idleSound != null)
-        {
-            GameObject idleAudioObj = new GameObject("IdleAudioSource");
-            idleAudioObj.transform.SetParent(transform);
-            idleAudioObj.transform.localPosition = Vector3.zero;
-            idleAudioSource = idleAudioObj.AddComponent<AudioSource>();
-            idleAudioSource.loop = true;
-            idleAudioSource.playOnAwake = false;
-            idleAudioSource.clip = idleSound;
-        }
-
-        if (weaponTransform == null) weaponTransform = transform;
-        if (weaponRenderer == null) weaponRenderer = GetComponent<SpriteRenderer>();
-        if (weaponLight == null) weaponLight = GetComponentInChildren<Light2D>();
-        if (weaponCollider == null) weaponCollider = GetComponent<Collider2D>();
-
+        powerSystem = PowerSystem.Instance;
+        targetCameraSize = normalFOV;
+        
         if (autoFindParticles && weaponParticles == null)
         {
             weaponParticles = GetComponentInChildren<ParticleSystem>();
@@ -253,6 +189,11 @@ public class ThrowableWeaponSystem : MonoBehaviour
         {
             weaponSprite.transform.localPosition = weaponSpriteOffset;
         }
+    }
+    
+    private void Start()
+    {
+        SetupWeapon();
     }
     
     private void SetupWeapon()
@@ -371,6 +312,13 @@ public class ThrowableWeaponSystem : MonoBehaviour
         currentIntensity = 1f;
         ChangeState(WeaponState.Aiming);
         
+        // Store original camera offset if not already stored
+        if (playerCamera != null && !hasStoredOriginalOffset)
+        {
+            originalCameraOffset = playerCamera.GetCinemachineComponent<CinemachineFramingTransposer>().m_TrackedObjectOffset;
+            hasStoredOriginalOffset = true;
+        }
+        
         if (crosshairTexture != null)
         {
             Vector2 hotspot = new Vector2(crosshairTexture.width / 2, crosshairTexture.height / 2);
@@ -399,6 +347,16 @@ public class ThrowableWeaponSystem : MonoBehaviour
 
         Cursor.SetCursor(null, Vector2.zero, CursorMode.Auto);
         targetCameraSize = normalFOV;
+        
+        // Return camera to original offset
+        if (playerCamera != null && hasStoredOriginalOffset)
+        {
+            var transposer = playerCamera.GetCinemachineComponent<CinemachineTransposer>();
+            if (transposer != null)
+            {
+                transposer.m_FollowOffset = originalCameraOffset;
+            }
+        }
         
         ChangeState(WeaponState.Held);
     }
@@ -460,37 +418,112 @@ public class ThrowableWeaponSystem : MonoBehaviour
         
         PlaySound(throwSound);
         
-        Debug.Log($"Weapon thrown! Intensity: {throwIntensity:F1}x, Penetration: {remainingPenetration}");
+        Debug.Log($"Weapon thrown! Speed: {currentSpeed:F1}, Intensity: {throwIntensity:F1}x, Penetration: {remainingPenetration}");
     }
     
+    // Modified SwingWeapon method - now uses animation instead of script-driven rotation
     private void SwingWeapon()
     {
         if (Time.time - lastSwingTime < swingCooldown) return;
-        if (isAiming) return;
+        if (isAiming || isMeleeAttacking) return;
         
-        isSwinging = true;
-        swingStartTime = Time.time;
+        isMeleeAttacking = true;
         lastSwingTime = Time.time;
-        swingHasHit = false;
+        meleeHitTargets.Clear(); // Reset hit targets for new swing
         
-        Vector3 mousePos = mainCamera.ScreenToWorldPoint(Input.mousePosition);
-        mousePos.z = 0f;
-        Vector3 direction = (mousePos - weaponTransform.position).normalized;
-        swingStartAngle = Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg - (swingAngle / 2f);
+        // Start animation-driven swing
+        StartCoroutine(PerformMeleeAttack());
         
         ChangeState(WeaponState.Swinging);
         PlaySound(swingSound);
         
-        Debug.Log("Weapon swing started!");
+        if (debugMeleeAnimation)
+        {
+            Debug.Log("Animation-driven weapon swing started!");
+        }
+    }
+
+    // New coroutine for animation-driven melee attack
+    private IEnumerator PerformMeleeAttack()
+    {
+        if (debugMeleeAnimation)
+        {
+            Debug.Log($"ThrowableWeapon: Starting melee attack animation at {Time.time:F2}");
+        }
+        
+        // Trigger the melee animation
+        if (weaponAnimator != null)
+        {
+            weaponAnimator.SetTrigger(meleeAttackTrigger);
+            
+            // Try to get actual animation length from animator
+            AnimatorClipInfo[] clipInfo = weaponAnimator.GetCurrentAnimatorClipInfo(0);
+            if (clipInfo.Length > 0)
+            {
+                meleeAnimationDuration = clipInfo[0].clip.length;
+            }
+        }
+        else if (debugMeleeAnimation)
+        {
+            Debug.LogWarning("ThrowableWeapon: No weapon animator found!");
+        }
+        
+        // Enable weapon collider for damage detection during swing
+        if (weaponCollider != null)
+        {
+            weaponCollider.enabled = true;
+        }
+        
+        // Wait for animation to complete
+        yield return new WaitForSeconds(meleeAnimationDuration);
+        
+        // Disable collider after swing completes
+        if (weaponCollider != null && currentState == WeaponState.Held)
+        {
+            weaponCollider.enabled = false;
+        }
+        
+        isMeleeAttacking = false;
+        
+        // Return to held state if we're still holding the weapon
+        if (currentState == WeaponState.Swinging)
+        {
+            ChangeState(WeaponState.Held);
+        }
+        
+        if (debugMeleeAnimation)
+        {
+            Debug.Log($"ThrowableWeapon: Melee attack completed at {Time.time:F2}");
+        }
     }
     
     private void UpdateCamera()
     {
         if (playerCamera == null) return;
         
+        // Update camera size (zoom)
         float currentSize = playerCamera.m_Lens.OrthographicSize;
         float newSize = Mathf.Lerp(currentSize, targetCameraSize, cameraTransitionSpeed * Time.deltaTime);
         playerCamera.m_Lens.OrthographicSize = newSize;
+        
+        // Update camera lookahead when aiming
+        var transposer = playerCamera.GetCinemachineComponent<CinemachineTransposer>();
+        if (transposer != null && hasStoredOriginalOffset)
+        {
+            Vector3 targetOffset = originalCameraOffset;
+            
+            if (isAiming && throwDirection != Vector3.zero)
+            {
+                // Calculate lookahead offset based on aim direction
+                Vector3 lookaheadOffset = throwDirection * cameraLookaheadDistance;
+                targetOffset = originalCameraOffset + lookaheadOffset;
+            }
+            
+            // Smoothly transition to target offset
+            Vector3 currentOffset = transposer.m_FollowOffset;
+            Vector3 newOffset = Vector3.Lerp(currentOffset, targetOffset, lookaheadTransitionSpeed * Time.deltaTime);
+            transposer.m_FollowOffset = newOffset;
+        }
     }
     
     private void UpdateCharge()
@@ -503,26 +536,39 @@ public class ThrowableWeaponSystem : MonoBehaviour
         if (currentState == WeaponState.Thrown || currentState == WeaponState.Returning)
         {
             float playerPowerVal = playerPower.currentPower > 0 ? playerPower.currentPower : 1f;
-            float depletionRate = baseFlightChargeDepletion * thrownIntensity * intensityDepletionMultiplier * (1f + 0.1f * playerPowerVal);
-            currentCharge = Mathf.Max(0f, currentCharge - depletionRate * Time.deltaTime);
+            float flightDepletion = baseFlightChargeDepletion * (1f + thrownIntensity * intensityDepletionMultiplier) / playerPowerVal;
+            currentCharge = Mathf.Max(0f, currentCharge - flightDepletion * Time.deltaTime);
             
-            if (currentCharge <= 0f)
+            if (debugCharge)
             {
-                DropWeapon();
+                Debug.Log($"Flight charge depletion: {flightDepletion:F2}/s, Current charge: {currentCharge:F1}");
             }
         }
-        else if (currentState != WeaponState.Dropped)
+        else if (currentState == WeaponState.Held || currentState == WeaponState.Aiming)
         {
-            float regenRate = baseChargeRegenRate + (playerPower.currentPower * powerChargeMultiplier);
+            float regenRate = baseChargeRegenRate;
+            
+            if (playerPower.currentPower > 0)
+            {
+                regenRate += playerPower.currentPower * powerChargeMultiplier;
+            }
+            
+            if (isAiming)
+            {
+                regenRate *= intensityChargeMultiplier;
+            }
+            
             currentCharge = Mathf.Min(maxCharge, currentCharge + regenRate * Time.deltaTime);
+            
+            if (debugCharge)
+            {
+                Debug.Log($"Charge regen: {regenRate:F2}/s, Current charge: {currentCharge:F1}");
+            }
         }
         
         OnChargeChanged?.Invoke(currentCharge / maxCharge);
-        
-        // Update idle sound volume
-        UpdateIdleSound();
     }
-        
+    
     private void UpdateWeaponBehavior()
     {
         switch (currentState)
@@ -595,64 +641,64 @@ public class ThrowableWeaponSystem : MonoBehaviour
         weaponContainer.localScale = scale;
     
     }
-
-    // private void ReturnToIdleRotation()
-    // {
-    //     weaponTransform.localScale = Vector3.one;
-    //     weaponTransform.localRotation = Quaternion.Lerp(weaponTransform.localRotation, Quaternion.identity, 5 * Time.deltaTime);
-    // }
-
-    private bool IsPlayerMoving()
-    {
-        return playerMovement != null && playerMovement.IsMoving();
-    }
     
     private void UpdateAimingBehavior()
     {
-        if (throwDirection != Vector3.zero)
+        if (!isAiming) return;
+        
+        // Charge rotation effect during aiming
+        float chargeLevel = currentCharge / maxCharge;
+        float targetRotation = Mathf.Lerp(0f, maxChargeRotation, chargeLevel);
+        
+        currentChargeRotation = Mathf.MoveTowards(currentChargeRotation, targetRotation, chargeRotationSpeed * Time.deltaTime);
+        
+        if (weaponSprite != null)
         {
-            // Rotate container to face throw direction
-            float angle = Mathf.Atan2(throwDirection.y, throwDirection.x) * Mathf.Rad2Deg;
-            weaponContainer.rotation = Quaternion.Euler(0, 0, angle);
-            
-            // Add charging rotation to weapon sprite
-            if (weaponSprite != null)
-            {
-                // Calculate charge rotation based on intensity
-                float targetChargeRotation = (currentIntensity - 1f) / (maxIntensityMultiplier - 1f) * maxChargeRotation;
-                currentChargeRotation = Mathf.MoveTowards(currentChargeRotation, targetChargeRotation, chargeRotationSpeed * Time.deltaTime);
-                
-                // Apply both the sprite offset and the charge rotation
-                weaponSprite.transform.localPosition = weaponSpriteOffset;
-                weaponSprite.transform.localRotation = Quaternion.Euler(0, 0, currentChargeRotation);
-            }
+            weaponSprite.transform.localRotation = Quaternion.Euler(0, 0, currentChargeRotation);
         }
+        
+        Vector3 mousePos = mainCamera.ScreenToWorldPoint(Input.mousePosition);
+        mousePos.z = 0f;
+        
+        Vector2 direction = (mousePos - weaponContainer.position).normalized;
+        weaponContainer.right = direction;
+        
+        Vector2 scale = weaponContainer.localScale;
+        if (direction.x < 0)
+        {
+            scale.y = -1;
+        }
+        else
+        {
+            scale.y = 1;
+        }
+        weaponContainer.localScale = scale;
     }
     
+    // Modified UpdateSwingingBehavior - now just handles early exit if needed
     private void UpdateSwingingBehavior()
     {
-        float swingProgress = (Time.time - swingStartTime) / swingDuration;
-        
-        if (swingProgress >= 1f)
+        // Animation handles the actual swing, just check for early exit conditions
+        if (!isMeleeAttacking && currentState == WeaponState.Swinging)
         {
-            isSwinging = false;
             ChangeState(WeaponState.Held);
-            return;
-        }
-        
-        float currentSwingAngle = swingStartAngle + (swingAngle * swingProgress);
-        weaponTransform.rotation = Quaternion.Euler(0, 0, currentSwingAngle);
-        
-        if (!swingHasHit && swingProgress > 0.3f && swingProgress < 0.7f)
-        {
-            CheckSwingDamage();
         }
     }
     
     private void UpdateThrownBehavior()
     {
         weaponTransform.position += velocity * Time.deltaTime;
-        weaponTransform.Rotate(0, 0, 720f * Time.deltaTime);
+        
+        // Apply spin effect to the weapon sprite during throwing
+        if (weaponSprite != null)
+        {
+            weaponSprite.transform.Rotate(0, 0, 720f * Time.deltaTime);
+        }
+        else
+        {
+            // Fallback: rotate the weapon transform if no separate sprite
+            weaponTransform.Rotate(0, 0, 720f * Time.deltaTime);
+        }
         
         float distanceFromPlayer = Vector3.Distance(weaponTransform.position, originalParent.position);
         if (distanceFromPlayer > 20f)
@@ -668,7 +714,17 @@ public class ThrowableWeaponSystem : MonoBehaviour
         float returnSpeed = currentSpeed * returnSpeedMultiplier;
         
         weaponTransform.position += direction * returnSpeed * Time.deltaTime;
-        weaponTransform.Rotate(0, 0, 1080f * Time.deltaTime);
+        
+        // Apply faster spin effect during return
+        if (weaponSprite != null)
+        {
+            weaponSprite.transform.Rotate(0, 0, 1080f * Time.deltaTime);
+        }
+        else
+        {
+            // Fallback: rotate the weapon transform if no separate sprite
+            weaponTransform.Rotate(0, 0, 1080f * Time.deltaTime);
+        }
         
         float distance = Vector3.Distance(weaponTransform.position, playerPos);
         if (distance < 0.5f)
@@ -693,115 +749,103 @@ public class ThrowableWeaponSystem : MonoBehaviour
         }
     }
     
-    private void CheckSwingDamage()
+    private void CheckGroundStatus()
     {
-        Collider2D[] colliders = Physics2D.OverlapCircleAll(weaponTransform.position, swingRange, collisionLayers);
+        RaycastHit2D hit = Physics2D.Raycast(weaponTransform.position, Vector2.down, groundCheckDistance, groundLayers);
+        isOnGround = hit.collider != null;
         
-        float playerPower = 1f;
-        if (powerSystem != null && powerSystem.GetPlayerPower() != null)
-            playerPower = Mathf.Max(1f, powerSystem.GetPlayerPower().currentPower);
-        foreach (Collider2D collider in colliders)
+        if (debugMovement)
         {
-            Vector3 directionToTarget = (collider.transform.position - weaponTransform.position).normalized;
-            float angleToTarget = Mathf.Atan2(directionToTarget.y, directionToTarget.x) * Mathf.Rad2Deg;
-            float normalizedSwingStart = swingStartAngle;
-            float normalizedSwingEnd = swingStartAngle + swingAngle;
-            float normalizedTargetAngle = angleToTarget;
-            while (normalizedTargetAngle < normalizedSwingStart) normalizedTargetAngle += 360f;
-            while (normalizedTargetAngle > normalizedSwingStart + 360f) normalizedTargetAngle -= 360f;
-            if (normalizedTargetAngle >= normalizedSwingStart && normalizedTargetAngle <= normalizedSwingEnd)
-            {
-                int damage = Mathf.RoundToInt(swingDamage * (1f + 0.1f * playerPower));
-                bool hitSomething = false;
-                // Check for enemy
-                EnemyHealth enemyHealth = collider.GetComponent<EnemyHealth>();
-                if (enemyHealth != null)
-                {
-                    enemyHealth.TakeDamage(damage);
-                    OnDamageDealt?.Invoke(damage);
-                    PlaySound(hitSound);
-                    hitSomething = true;
-                    Debug.Log($"Swing hit enemy {collider.name} for {damage} damage!");
-                }
-                // Check for villager health component (alternative)
-                if (!hitSomething)
-                {
-                    VillagerHealth villagerHealth = collider.GetComponent<VillagerHealth>();
-                    if (villagerHealth != null)
-                    {
-                        villagerHealth.TakeDamage(damage);
-                        OnDamageDealt?.Invoke(damage);
-                        PlaySound(hitSound);
-                        hitSomething = true;
-                        Debug.Log($"WARNING: Swing hit villager {collider.name} for {damage} damage! (Friendly Fire)");
-                    }
-                }
-                if (hitSomething)
-                {
-                    swingHasHit = true;
-                    break;
-                }
-            }
+            Debug.Log($"Ground check: {isOnGround}");
         }
     }
     
+    // Modified OnTriggerEnter2D to handle melee damage during animation
     private void OnTriggerEnter2D(Collider2D other)
     {
-        if (currentState == WeaponState.Thrown)
+        if (debugCollision)
         {
-            // When thrown, check collision with all collision layers
-            if (IsInLayerMask(other.gameObject.layer, collisionLayers))
-            {
-                HandleWeaponCollision(other);
-            }
+            Debug.Log($"Weapon trigger entered by: {other.gameObject.name} (State: {currentState}, IsMeleeAttacking: {isMeleeAttacking})");
         }
-        else if (currentState == WeaponState.Dropped)
+        
+        // Handle melee damage during animation-driven swing
+        if (currentState == WeaponState.Swinging && isMeleeAttacking)
         {
-            // When dropped, check for ground triggers
-            if (IsInLayerMask(other.gameObject.layer, groundLayers))
-            {
-                OnGroundTriggerHit();
-            }
+            HandleMeleeDamage(other);
+            return;
+        }
+        
+        // Handle thrown weapon collisions (existing logic)
+        if (currentState == WeaponState.Thrown || currentState == WeaponState.Returning)
+        {
+            HandleThrownWeaponCollision(other);
         }
     }
 
-    private bool IsInLayerMask(int layer, LayerMask layerMask)
+    // New method to handle melee damage during animation
+    private void HandleMeleeDamage(Collider2D hitCollider)
     {
-        return (layerMask.value & (1 << layer)) != 0;
-    }
-    
-    private void OnGroundTriggerHit()
-    {
-        // Weapon has hit ground trigger while dropped
-        Rigidbody2D rb = weaponTransform.GetComponent<Rigidbody2D>();
-        if (rb != null)
+        // Don't hit the same target twice in one swing
+        if (meleeHitTargets.Contains(hitCollider.gameObject))
         {
-            // Stop the weapon and remove physics
-            rb.velocity = Vector2.zero;
-            Destroy(rb);
-            isOnGround = true;
-            Debug.Log("Weapon landed on ground trigger!");
+            return;
         }
-    }
-    
-    private void HandleWeaponCollision(Collider2D hitCollider)
-    {
-        // Spawn hit effect at collision point
-        SpawnHitEffect(hitCollider.ClosestPoint(transform.position));
         
-        float chargeMultiplier = currentCharge / maxCharge;
-        float playerPower = 1f;
-        if (powerSystem != null && powerSystem.GetPlayerPower() != null)
-            playerPower = Mathf.Max(1f, powerSystem.GetPlayerPower().currentPower);
-        int damage = Mathf.RoundToInt(baseDamage * (1f + chargeMultiplier) * thrownIntensity * (1f + 0.1f * playerPower));
+        // Check if target is in valid damage layers
+        if (!IsInLayerMask(hitCollider.gameObject.layer, collisionLayers))
+        {
+            return;
+        }
         
         bool hitSomething = false;
         
-        // Check for enemy
-        EnemyHealth enemyHealth = hitCollider.GetComponent<EnemyHealth>();
+        // Handle enemy damage
+        Health enemyHealth = hitCollider.GetComponent<Health>();
         if (enemyHealth != null)
         {
-            enemyHealth.TakeDamage(damage);
+            enemyHealth.TakeDamage((int)swingDamage);
+            OnDamageDealt?.Invoke((int)swingDamage);
+            meleeHitTargets.Add(hitCollider.gameObject);
+            hitSomething = true;
+            
+            if (debugMeleeAnimation)
+            {
+                Debug.Log($"Melee hit enemy {hitCollider.name} for {swingDamage} damage!");
+            }
+        }
+        
+        // Handle villager damage (friendly fire)
+        VillagerHealth villagerHealth = hitCollider.GetComponent<VillagerHealth>();
+        if (villagerHealth != null)
+        {
+            GameObject player = GameObject.FindGameObjectWithTag("Player");
+            villagerHealth.TakeDamage((int)swingDamage, player);
+            OnDamageDealt?.Invoke((int)swingDamage);
+            meleeHitTargets.Add(hitCollider.gameObject);
+            hitSomething = true;
+            
+            if (debugMeleeAnimation)
+            {
+                Debug.Log($"Melee hit villager {hitCollider.name} for {swingDamage} damage!");
+            }
+        }
+        
+        if (hitSomething)
+        {
+            PlaySound(hitSound);
+        }
+    }
+    
+    private void HandleThrownWeaponCollision(Collider2D hitCollider)
+    {
+        bool hitSomething = false;
+        int damage = GetCurrentDamage();
+        
+        // Check for enemy health component first
+        Health enemyHealth = hitCollider.GetComponent<Health>();
+        if (enemyHealth != null)
+        {
+            enemyHealth.TakeDamage(damage); // Pass player as damage source
             OnDamageDealt?.Invoke(damage);
             PlaySound(hitSound);
             hitSomething = true;
@@ -1003,92 +1047,6 @@ public class ThrowableWeaponSystem : MonoBehaviour
             float emissionMultiplier = emissionCurve.Evaluate(chargeLevel);
             float targetEmissionRate = Mathf.Lerp(minEmissionRate, maxEmissionRate, emissionMultiplier);
             emission.rateOverTime = targetEmissionRate;
-            
-            // Update start size based on charge
-            float sizeMultiplier = sizeCurve.Evaluate(chargeLevel);
-            float targetMinSize = Mathf.Lerp(minStartSize, maxStartSize, sizeMultiplier) * 0.8f; // 80% for min
-            float targetMaxSize = Mathf.Lerp(minStartSize, maxStartSize, sizeMultiplier);
-            
-            // Set random between two constants for size
-            var startSize = main.startSize;
-            startSize.mode = ParticleSystemCurveMode.TwoConstants;
-            startSize.constantMin = targetMinSize;
-            startSize.constantMax = targetMaxSize;
-            main.startSize = startSize;
-            
-            // Additional intensity boost when aiming
-            if (isAiming && currentIntensity > 1f)
-            {
-                float intensityBoost = currentIntensity / maxIntensityMultiplier;
-                emission.rateOverTime = targetEmissionRate * (1f + intensityBoost);
-                
-                // Also boost size slightly when aiming
-                startSize.constantMin = targetMinSize * (1f + intensityBoost * 0.2f);
-                startSize.constantMax = targetMaxSize * (1f + intensityBoost * 0.2f);
-                main.startSize = startSize;
-            }
-        }
-        
-        // Enable/disable particles based on state
-        if (currentState == WeaponState.Dropped || chargeLevel < 0.05f)
-        {
-            if (weaponParticles.isPlaying)
-            {
-                weaponParticles.Stop();
-            }
-        }
-        else
-        {
-            if (!weaponParticles.isPlaying)
-            {
-                weaponParticles.Play();
-            }
-        }
-    }
-    
-    public void SetParticleEmissionRange(float minRate, float maxRate)
-    {
-        minEmissionRate = minRate;
-        maxEmissionRate = maxRate;
-        UpdateParticleEffects();
-    }
-
-    public void SetParticleSizeRange(float minSize, float maxSize)
-    {
-        minStartSize = minSize;
-        maxStartSize = maxSize;
-        UpdateParticleEffects();
-    }
-
-    public void SetParticleCurves(AnimationCurve emission, AnimationCurve size)
-    {
-        emissionCurve = emission;
-        sizeCurve = size;
-        UpdateParticleEffects();
-    }
-        
-    private void CheckGroundStatus()
-    {
-        // Check if weapon is touching ground using raycast downward
-        Vector3 weaponPosition = weaponTransform.position;
-        RaycastHit2D groundHit = Physics2D.Raycast(
-            weaponPosition,
-            Vector2.down,
-            groundCheckDistance,
-            groundLayers
-        );
-
-        isOnGround = groundHit.collider != null;
-
-        // Also check for overlapping ground colliders (in case weapon is inside ground)
-        if (!isOnGround)
-        {
-            Collider2D groundOverlap = Physics2D.OverlapCircle(
-                weaponPosition,
-                0.1f,
-                groundLayers
-            );
-            isOnGround = groundOverlap != null;
         }
     }
     
@@ -1099,22 +1057,10 @@ public class ThrowableWeaponSystem : MonoBehaviour
         WeaponState oldState = currentState;
         currentState = newState;
         
-        OnStateChanged?.Invoke(newState);
-        
-        // Update idle sound based on state
-        UpdateIdleSound();
-        
-        // Stop idle sound completely when dropped
-        if (newState == WeaponState.Dropped && idleAudioSource != null)
+        if (debugMovement)
         {
-            idleAudioSource.Stop();
+            Debug.Log($"Weapon state changed: {oldState} -> {newState}");
         }
-        else if (oldState == WeaponState.Dropped && newState == WeaponState.Held && idleAudioSource != null && idleSound != null)
-        {
-            idleAudioSource.Play();
-        }
-        
-        Debug.Log($"Weapon state changed: {oldState} → {newState}");
     }
     
     private void PlaySound(AudioClip clip)
@@ -1123,6 +1069,18 @@ public class ThrowableWeaponSystem : MonoBehaviour
         {
             audioSource.PlayOneShot(clip, volume);
         }
+    }
+
+    // Helper method to check if object is in layer mask
+    private bool IsInLayerMask(int layer, LayerMask layerMask)
+    {
+        return layerMask == (layerMask | (1 << layer));
+    }
+
+    // Add this property for external checking (similar to villager combat systems)
+    public bool IsMeleeAttacking()
+    {
+        return isMeleeAttacking;
     }
     
     // Public getters

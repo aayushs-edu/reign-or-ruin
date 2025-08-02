@@ -27,7 +27,7 @@ public class GameStateManager : MonoBehaviour
     
     [Header("System References")]
     [SerializeField] private DayNightCycleManager dayNightManager;
-    [SerializeField] private VillagePowerAllocationUI villageUI;
+    [SerializeField] private VillageMenu villageUI;
     [SerializeField] private EnemyWaveSystem waveSystem;
     [SerializeField] private VillageManager villageManager;
     
@@ -85,7 +85,7 @@ public class GameStateManager : MonoBehaviour
         if (dayNightManager == null)
             dayNightManager = FindObjectOfType<DayNightCycleManager>();
         if (villageUI == null)
-            villageUI = FindObjectOfType<VillagePowerAllocationUI>();
+            villageUI = FindObjectOfType<VillageMenu>();
         if (waveSystem == null)
             waveSystem = FindObjectOfType<EnemyWaveSystem>();
         if (villageManager == null)
@@ -184,8 +184,8 @@ public class GameStateManager : MonoBehaviour
             Debug.Log("Entered Day state - Power allocation phase");
         
         // Enable power allocation UI
-        if (villageUI != null)
-            villageUI.RefreshAllUI();
+        // if (villageUI != null)
+        //     villageUI.RefreshAllUI();
         
         // Process village recovery and food distribution
         if (villageManager != null)

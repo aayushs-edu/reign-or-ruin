@@ -72,6 +72,13 @@ public class VillageManager : MonoBehaviour
             villagers = FindObjectsOfType<Villager>().ToList();
         }
 
+        // Sort villagers: Captain first, then Mage, then Farmer, then Commoners
+        villagers = villagers.OrderByDescending(v => v.GetRole() == VillagerRole.Captain)
+                             .ThenByDescending(v => v.GetRole() == VillagerRole.Mage)
+                             .ThenByDescending(v => v.GetRole() == VillagerRole.Farmer)
+                             .ThenBy(v => v.GetRole() == VillagerRole.Commoner ? 0 : 1)
+                             .ToList();
+
         totalVillagers = villagers.Count;
 
         // Set discontent constants for all villagers

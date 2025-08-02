@@ -233,7 +233,7 @@ public class DayNightCycleManager : MonoBehaviour
         }
         
         // 4. Setup village UI with updated data
-        PopulateVillageUI();
+        // PopulateVillageUI();
         
         // 5. Start day timer
         dayTimeRemaining = dayDuration;
@@ -348,35 +348,6 @@ public class DayNightCycleManager : MonoBehaviour
             waveSystem.StartWaveManually();
         }
     }
-    
-    private void SetupDayImmediate()
-    {
-        isDay = true;
-        
-        if (globalLight != null)
-        {
-            globalLight.color = lightingSettings.dayColor;
-            globalLight.intensity = lightingSettings.dayIntensity;
-        }
-        
-        if (waveSection != null)
-            waveSection.gameObject.SetActive(false);
-        if (topArea != null)
-        {
-            topArea.gameObject.SetActive(true);
-            topArea.position = topAreaOriginalPos;
-        }
-        if (mainPanel != null)
-        {
-            mainPanel.gameObject.SetActive(true);
-            mainPanel.position = mainPanelOriginalPos;
-        }
-        
-        PopulateVillageUI();
-        dayTimeRemaining = dayDuration;
-        dayTimerCoroutine = StartCoroutine(DayTimer());
-    }
-    
     #endregion
     
     #region Lighting Control
@@ -404,19 +375,6 @@ public class DayNightCycleManager : MonoBehaviour
     #endregion
     
     #region UI Population and Updates
-    
-    private void PopulateVillageUI()
-    {
-        if (VillagePowerAllocationUI.Instance != null)
-        {
-            VillagePowerAllocationUI.Instance.RefreshAllUI();
-        }
-        
-        UpdateCountdownDisplay();
-        
-        if (debugTransitions)
-            Debug.Log("Village UI populated with current data");
-    }
     
     private void UpdateCountdownDisplay()
     {
@@ -491,19 +449,10 @@ public class DayNightCycleManager : MonoBehaviour
         if (debugTransitions)
             Debug.Log("Processing end of day - applying power allocations");
         
-        ApplyPowerAllocations();
         
         if (villageManager != null)
         {
             villageManager.ProcessNightCycle();
-        }
-    }
-    
-    private void ApplyPowerAllocations()
-    {
-        if (VillagePowerAllocationUI.Instance != null)
-        {
-            VillagePowerAllocationUI.Instance.ApplyAllPowerAllocations();
         }
     }
     
